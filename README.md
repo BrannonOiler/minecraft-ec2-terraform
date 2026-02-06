@@ -22,6 +22,8 @@ The mod is [Homestead - A Cozy Survival Experience](https://www.curseforge.com/m
 
 ## Setup
 
+<i>Follow this process first with only the `generate_ssh_key` resource uncommented to create the SSH key pair. Then uncomment the rest and run again to create the EC2 instance.</i>
+
 1. Update variables in `variables.tf` as needed
 2. Initialize Terraform:
    ```sh
