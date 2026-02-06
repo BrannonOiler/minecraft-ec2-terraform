@@ -1,16 +1,16 @@
 # Minecraft Server on AWS Lightsail with Terraform
 
-This Terraform project provisions a modded Minecraft server on EC2. Follow the instructions in `docs/instructions.md` to set up the server and install Minecraft.
+This Terraform project provisions a modded Minecraft server on EC2. Follow the setup below and the instructions in `docs/instructions.md` to set up the server and install Minecraft.
 
-The mod is [Homestead - A Cozy Survival Experience](https://www.curseforge.com/minecraft/modpacks/homestead-cozy).
+The mod used is [Homestead - A Cozy Survival Experience](https://www.curseforge.com/minecraft/modpacks/homestead-cozy). Feel free to modify the setup to use a different modpack or vanilla Minecraft.
 
 ## Features
 
 - [x] EC2 instance with security group allowing Minecraft traffic (25565/tcp)
 - [x] S3 backend for Terraform state management
-- [ ] Automated setup of Minecraft server software on the EC2 instance
+- [x] Automated setup of Minecraft server software on the EC2 instance
+- [x] A cron job to automatically shut down the server when no players are online
 - [ ] A Discord bot for server status and management commands
-- [ ] A cron job to automatically shut down the server when no players are online
 - [ ] EBS snapshot lifecycle management for backups
 - [ ] Add admin settings (for everyone) and server password
 - [ ] Modularize to allow multiple server instances with different mods/configurations

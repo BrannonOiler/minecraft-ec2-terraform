@@ -102,6 +102,45 @@ resource "aws_instance" "minecraft-server" {
   tags = {
     Name = var.instance_name
   }
+
+  #? Create scripts directory on EC2 instance
+  provisioner "remote-exec" {
+    inline = [
+      "mkdir -p /home/ec2-user/scripts"
+    ]
+    connection {
+      type        = "ssh"
+      user        = "ec2-user"
+      private_key = file("${var.ssh_key_pair_path}/${var.ssh_key_pair_name}")
+      host        = self.public_ip
+    }
+  } 
+
+  #? Copy setup scripts to the EC2 instance after it's created
+  provisioner "file" {
+    source      = "scripts/"
+    destination = "/home/ec2-user/scripts"
+    connection {
+      type        = "ssh"
+      user        = "ec2-user"
+      private_key = file("${var.ssh_key_pair_path}/${var.ssh_key_pair_name}")
+      host        = self.public_ip
+    }
+  }
+
+  #? Run the EC2 setup script to install Minecraft server and configure auto-shutdown, etc.
+  provisioner "remote-exec" {
+    inline = [
+      "chmod +x /home/ec2-user/scripts/*",
+      "cd ~ && /home/ec2-user/scripts/ec2-setup.sh"
+    ]
+    connection {
+      type        = "ssh"
+      user        = "ec2-user"
+      private_key = file("${var.ssh_key_pair_path}/${var.ssh_key_pair_name}")
+      host        = self.public_ip
+    }
+  }
 }
 
 # Create an Elastic IP for the Minecraft server
