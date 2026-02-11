@@ -24,7 +24,7 @@ else
 fi
 
 # Update {player_count_file} with the current count
-echo "$player_count" > "$player_count_file"
+echo "$player_count" >"$player_count_file"
 
 # Shutdown the EC2 instance if {player_count} and {prev_count} are both zero
 if [[ "$player_count" -eq 0 && "$prev_count" -eq 0 ]]; then
