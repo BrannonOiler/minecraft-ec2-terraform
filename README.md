@@ -12,8 +12,8 @@ The mod used is [Homestead - A Cozy Survival Experience](https://www.curseforge.
 - [x] A systemd timer job to automatically shut down the server when no players are online
 - [x] Set whitelist permissions via Terraform variables
 - [x] Set up RCON for remote server management
+- [x] EBS snapshot lifecycle management for backups
 - [ ] A Discord bot for server status and management commands
-- [ ] EBS snapshot lifecycle management for backups
 
 ## Potential Future Enhancements
 
