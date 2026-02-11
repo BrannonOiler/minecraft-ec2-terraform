@@ -53,5 +53,6 @@ The mod used is [Homestead - A Cozy Survival Experience](https://www.curseforge.
 
 ## Outputs
 
-- `public_ip`: Public IP address of the Minecraft server
 - `minecraft_connection_string`: Connection string for Minecraft client
+- `public_ip`: Public IP address of the Minecraft server
+- `rcon_password`: Generated RCON password for remote server management

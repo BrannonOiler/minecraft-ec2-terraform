@@ -13,7 +13,7 @@ echo_info "Updating package lists and upgrading existing packages..."
 silently sudo dnf update -y
 
 echo_info "Installing necessary packages: Java 17 (Amazon Corretto), netcat, pip, unzip..."
-silently sudo dnf install -y java-17-amazon-corretto nc python3-pip unzip
+silently sudo dnf install -y firewall-cmd java-17-amazon-corretto nc python3-pip unzip
 
 echo_info "Installing mcstatus using pip..."
 silently pip3 install mcstatus --user
@@ -70,6 +70,7 @@ else
     echo_warning "Minecraft server directory already exists, skipping server setup."
 fi
 
+## NAVIGATE TO HOME DIRECTORY
 # Navigate back to home directory
 cd /home/ec2-user
 

@@ -79,6 +79,14 @@ resource "aws_security_group" "minecraft_server_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  ingress {
+    description = "Minecraft RCON Port"
+    from_port   = 25575
+    to_port     = 25575
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -102,6 +110,12 @@ resource "local_file" "whitelist_json" {
 resource "local_file" "ops_json" {
   content  = templatefile("${path.module}/templates/ops.tpl", { ops = var.whitelist })
   filename = "${path.module}/tmp/ops.json"
+}
+
+#? Generate a password for RCON (remote console) access to the Minecraft server
+resource "random_password" "rcon_password" {
+  length  = 16
+  special = true
 }
 
 #? Create EC2 instance for Minecraft server
@@ -148,6 +162,9 @@ resource "aws_instance" "minecraft-server" {
       "chmod +x /home/ec2-user/scripts/*",
       #? Run the setup script to install Java, download and configure the Minecraft server, set up the auto-shutdown service, etc.
       "cd ~ && /home/ec2-user/scripts/ec2-setup.sh",
+      #? Enable and set the RCON password in the server.properties file
+      "sed -i 's/^enable-rcon=.*/enable-rcon=true/' /home/ec2-user/minecraft-server/server.properties",
+      "sed -i 's/^rcon.password=.*/rcon.password=${random_password.rcon_password.result}/' /home/ec2-user/minecraft-server/server.properties"
     ]
     connection {
       type        = "ssh"
@@ -173,6 +190,19 @@ resource "aws_instance" "minecraft-server" {
   provisioner "file" {
     source      = local_file.ops_json.filename
     destination = "/home/ec2-user/minecraft-server/ops.json"
+    connection {
+      type        = "ssh"
+      user        = "ec2-user"
+      private_key = file("${var.ssh_key_pair_path}/${var.ssh_key_pair_name}")
+      host        = self.public_ip
+    }
+  }
+
+  #? Restart the Minecraft server to apply whitelist and ops changes
+  provisioner "remote-exec" {
+    inline = [
+      "sudo systemctl restart minecraft.service"
+    ]
     connection {
       type        = "ssh"
       user        = "ec2-user"
