@@ -216,5 +216,3 @@ resource "aws_instance" "minecraft-server" {
 resource "aws_eip" "minecraft-server-eip" {
   instance = aws_instance.minecraft-server.id
 }
-
-

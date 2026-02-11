@@ -11,10 +11,13 @@ The mod used is [Homestead - A Cozy Survival Experience](https://www.curseforge.
 - [x] Automated setup of Minecraft server software on the EC2 instance
 - [x] A systemd timer job to automatically shut down the server when no players are online
 - [x] Set whitelist permissions via Terraform variables
+- [x] Set up RCON for remote server management
 - [ ] A Discord bot for server status and management commands
 - [ ] EBS snapshot lifecycle management for backups
-- [ ] Modularize to allow multiple server instances with different mods/configurations
-- [ ] Set up RCON for remote server management
+
+## Potential Future Enhancements
+
+- Modularize to allow multiple server instances with different mods/configurations
 
 ## Prerequisites
 
