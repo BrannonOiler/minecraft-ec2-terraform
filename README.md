@@ -9,11 +9,12 @@ The mod used is [Homestead - A Cozy Survival Experience](https://www.curseforge.
 - [x] EC2 instance with security group allowing Minecraft traffic (25565/tcp)
 - [x] S3 backend for Terraform state management
 - [x] Automated setup of Minecraft server software on the EC2 instance
-- [x] A cron job to automatically shut down the server when no players are online
+- [x] A systemd timer job to automatically shut down the server when no players are online
+- [x] Set whitelist permissions via Terraform variables
 - [ ] A Discord bot for server status and management commands
 - [ ] EBS snapshot lifecycle management for backups
-- [ ] Add admin settings (for everyone) and server password
 - [ ] Modularize to allow multiple server instances with different mods/configurations
+- [ ] Set up RCON for remote server management
 
 ## Prerequisites
 
@@ -24,7 +25,7 @@ The mod used is [Homestead - A Cozy Survival Experience](https://www.curseforge.
 
 <i>Follow this process first with only the `generate_ssh_key` resource uncommented to create the SSH key pair. Then uncomment the rest and run again to create the EC2 instance.</i>
 
-1. Update variables in `variables.tf` as needed
+1. Update variables in `variables.tf` (or create a `terraform.tfvars` file to override defaults)
 2. Initialize Terraform:
    ```sh
    terraform init
@@ -37,14 +38,18 @@ The mod used is [Homestead - A Cozy Survival Experience](https://www.curseforge.
 
 ## Variables
 
-- `aws_region`: AWS region to deploy the EC2 instance (default: `us-east-2`)
-- `vpc_id`: VPC ID where the EC2 instance will be deployed (default: `vpc-4bd37320`)
-- `subnet_id`: Subnet ID for the EC2 instance (default: `subnet-bcf830d7`)
-- `ami_id`: AMI ID for the EC2 instance (default: `ami-024c678eb6c1de869`)
-- `instance_type`: EC2 instance type for the Minecraft server (default: `r7g.large`)
-- `instance_name`: Name for the Minecraft EC2 instance (default: `minecraft-server-01`)
-- `ssh_key_pair_name`: Name of the EC2 key pair for SSH access (default: `minecraft-server-01-key-pair`)
-- `ssh_key_pair_path`: Path to the SSH private key for accessing the EC2 instance (default: `~/.ssh/personal-keys`)
+- `aws_region`: AWS region to deploy the EC2 instance. Default: `us-east-2`
+- `vpc_id`: VPC ID where the EC2 instance will be deployed. Default: `vpc-4bd37320` (us-east-2 main VPC)
+- `subnet_id`: Subnet ID for the EC2 instance. Default: `subnet-bcf830d7` (us-east-2a subnet)
+- `ami_id`: AMI ID for the EC2 instance. Default: `ami-024c678eb6c1de869` (Amazon Linux 2023 - kernel 6.12, ARM)
+  - To use x86, update to `ami-0401b65de01e90bd8` (Amazon Linux 2023 - kernel 6.12, x86)
+- `instance_type`: EC2 instance type for the Minecraft server. Default: `r7g.large` (2 vCPUs, 16 GiB RAM, memory optimized)
+  - Other options: `t4g.xlarge` (4 vCPUs, 16 GiB RAM), `r8g.large` (2 vCPUs, 16 GiB RAM, newer gen)
+- `instance_name`: Name for the Minecraft EC2 instance. Default: `minecraft-server-01`
+- `ssh_key_pair_name`: Name of the EC2 key pair for SSH access. Default: `minecraft-server-01-key-pair`
+- `ssh_key_pair_path`: Path to the SSH private key for accessing the EC2 instance. Default: `~/.ssh/personal-keys`
+- `whitelist`: List of Minecraft usernames to whitelist on the server. Default: `[]`. Format:
+  - Each entry is an object: `{ uuid = string, name = string }`
 
 ## Outputs
 

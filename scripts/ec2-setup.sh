@@ -56,8 +56,14 @@ if [ ! -d /home/ec2-user/minecraft-server ]; then
     echo_info "Accepting Minecraft EULA..."
     echo "eula=true" >eula.txt
 
-    echo_info "Setting Java memory arguments in variables.txt..."
+    echo_info "Changing settings in variables.txt..."
     sed -i 's/^JAVA_ARGS=.*/JAVA_ARGS="-Xmx12G -Xms8G"/' variables.txt
+
+    echo_info "Changing settings in server.properties..."
+    sed -i 's/^enforce-whitelist=.*/enforce-whitelist=true/' server.properties
+    sed -i 's/^max-players=.*/max-players=4/' server.properties
+    sed -i 's/^pvp=.*/pvp=false/' server.properties
+    sed -i 's/^white-list=.*/white-list=true/' server.properties
 
     echo_success "Minecraft server setup complete."
 else

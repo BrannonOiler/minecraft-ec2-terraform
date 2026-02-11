@@ -26,7 +26,7 @@ variable "ami_id" {
 variable "instance_type" {
   description = "EC2 instance type for the Minecraft server."
   type        = string
-  default    = "r7g.large" # 2 vCPUs, 16 GiB RAM, $0.1071 hourly, memory optimized
+  default     = "r7g.large" # 2 vCPUs, 16 GiB RAM, $0.1071 hourly, memory optimized
   ## Other options:
   # default     = "t4g.xlarge" # 4 vCPUs16, GiB RAM, $0.1344 hourly
   # default    = "r8g.large" # 2 vCPUs, 16 GiB RAM, $0.1178 hourly, memory optimized, newer gen
@@ -47,4 +47,13 @@ variable "ssh_key_pair_name" {
 variable "ssh_key_pair_path" {
   description = "Path to the SSH private key for accessing the EC2 instance."
   default     = "~/.ssh/personal-keys"
+}
+
+variable "whitelist" {
+  description = "List of Minecraft usernames to whitelist on the server."
+  type = list(object({
+    uuid = string
+    name = string
+  }))
+  default = []
 }

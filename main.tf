@@ -1,5 +1,5 @@
 terraform {
-  # Store state in S3
+  #? Store state in S3
   backend "s3" {
     bucket         = "tf-state-v5736ps3czzv"
     key            = "mc-homestead-server/terraform.tfstate"
@@ -14,7 +14,7 @@ terraform {
       version = ">= 4.0"
     }
   }
-  
+
   required_version = ">= 1.0.0"
 }
 
@@ -28,8 +28,8 @@ provider "aws" {
   }
 }
 
-### THIS SECTION MUST BE APPLIED FIRST ###
-# Generate SSH key pair locally (if not already present)
+###! THIS SECTION MUST BE APPLIED FIRST ###
+#? Generate SSH key pair locally (if not already present)
 resource "null_resource" "generate_ssh_key" {
   provisioner "local-exec" {
     command = <<EOT
@@ -40,16 +40,16 @@ resource "null_resource" "generate_ssh_key" {
     EOT
   }
 }
-### END SECTION ###
+###! END SECTION ###
 
-# Create EC2 key pair using the generated public key
+#? Create EC2 key pair using the generated public key
 resource "aws_key_pair" "minecraft-server-key-pair" {
   key_name   = var.ssh_key_pair_name
   public_key = file("${var.ssh_key_pair_path}/${var.ssh_key_pair_name}.pub")
   depends_on = [null_resource.generate_ssh_key]
 }
 
-# Create Security Group for Minecraft and SSH
+#? Create Security Group for Minecraft and SSH
 resource "aws_security_group" "minecraft_server_sg" {
   name        = "${var.instance_name}-sg"
   description = "Allow Minecraft and SSH access"
@@ -91,7 +91,20 @@ resource "aws_security_group" "minecraft_server_sg" {
   }
 }
 
-# Create EC2 instance for Minecraft server
+#? Convert ${whitelist} variable to whitelist.json that can be copied to EC2 instance
+resource "local_file" "whitelist_json" {
+  content  = templatefile("${path.module}/templates/whitelist.tpl", { whitelist = var.whitelist })
+  filename = "${path.module}/tmp/whitelist.json"
+}
+
+#? Convert ${whitelist} variable to ops.json that can be copied to EC2 instance
+#! For now, all whitelisted players are also ops (level 2)
+resource "local_file" "ops_json" {
+  content  = templatefile("${path.module}/templates/ops.tpl", { ops = var.whitelist })
+  filename = "${path.module}/tmp/ops.json"
+}
+
+#? Create EC2 instance for Minecraft server
 resource "aws_instance" "minecraft-server" {
   ami                    = var.ami_id
   instance_type          = var.instance_type
@@ -103,7 +116,7 @@ resource "aws_instance" "minecraft-server" {
     Name = var.instance_name
   }
 
-  #? Create scripts directory on EC2 instance
+  #? Create ~/scripts directory on the EC2 instance for setup scripts
   provisioner "remote-exec" {
     inline = [
       "mkdir -p /home/ec2-user/scripts"
@@ -114,9 +127,9 @@ resource "aws_instance" "minecraft-server" {
       private_key = file("${var.ssh_key_pair_path}/${var.ssh_key_pair_name}")
       host        = self.public_ip
     }
-  } 
+  }
 
-  #? Copy setup scripts to the EC2 instance after it's created
+  #? Copy setup scripts from scripts/ directory on local machine to ~/scripts on the EC2 instance
   provisioner "file" {
     source      = "scripts/"
     destination = "/home/ec2-user/scripts"
@@ -128,12 +141,38 @@ resource "aws_instance" "minecraft-server" {
     }
   }
 
-  #? Run the EC2 setup script to install Minecraft server and configure auto-shutdown, etc.
+  #? Run the EC2 setup script and other necessary commands to set up the Minecraft server
   provisioner "remote-exec" {
     inline = [
+      #? Make the setup script executable
       "chmod +x /home/ec2-user/scripts/*",
-      "cd ~ && /home/ec2-user/scripts/ec2-setup.sh"
+      #? Run the setup script to install Java, download and configure the Minecraft server, set up the auto-shutdown service, etc.
+      "cd ~ && /home/ec2-user/scripts/ec2-setup.sh",
     ]
+    connection {
+      type        = "ssh"
+      user        = "ec2-user"
+      private_key = file("${var.ssh_key_pair_path}/${var.ssh_key_pair_name}")
+      host        = self.public_ip
+    }
+  }
+
+  #? Copy the generated whitelist.json file to the EC2 instance
+  provisioner "file" {
+    source      = local_file.whitelist_json.filename
+    destination = "/home/ec2-user/minecraft-server/whitelist.json"
+    connection {
+      type        = "ssh"
+      user        = "ec2-user"
+      private_key = file("${var.ssh_key_pair_path}/${var.ssh_key_pair_name}")
+      host        = self.public_ip
+    }
+  }
+
+  #? Copy the generated ops.json file to the EC2 instance
+  provisioner "file" {
+    source      = local_file.ops_json.filename
+    destination = "/home/ec2-user/minecraft-server/ops.json"
     connection {
       type        = "ssh"
       user        = "ec2-user"
@@ -143,7 +182,7 @@ resource "aws_instance" "minecraft-server" {
   }
 }
 
-# Create an Elastic IP for the Minecraft server
+#? Create an Elastic IP for the Minecraft server
 resource "aws_eip" "minecraft-server-eip" {
   instance = aws_instance.minecraft-server.id
 }
