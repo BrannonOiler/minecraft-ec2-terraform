@@ -216,3 +216,13 @@ resource "aws_instance" "minecraft-server" {
 resource "aws_eip" "minecraft-server-eip" {
   instance = aws_instance.minecraft-server.id
 }
+
+#? EBS Backup Lifecycle Policy Module
+module "ebs_backup" {
+  source      = "./modules/ebs-backup"
+  instance_id = aws_instance.minecraft-server.id
+  volume_id   = aws_instance.minecraft-server.root_block_device[0].volume_id
+  device_name = "/dev/xvda"
+}
+
+
