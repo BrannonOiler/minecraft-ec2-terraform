@@ -61,7 +61,13 @@ resource "aws_iam_role_policy" "lambda_ec2_policy" {
 #? Build the Lambda function code from the local "lambda" directory
 resource "null_resource" "build_lambda" {
   triggers = {
-    source_hash = sha256(join("", [for f in fileset("${path.module}/lambda", "**/*.ts") : filesha256("${path.module}/lambda/${f}")], [filesha256("${path.module}/lambda/package.json")], [filesha256("${path.module}/lambda/tsup.config.ts")]))
+    source_hash = sha256(
+      join("", concat(
+        [for f in fileset("${path.module}/lambda", "**/*.ts") : filesha256("${path.module}/lambda/${f}")],
+        [filesha256("${path.module}/lambda/package.json")],
+        [filesha256("${path.module}/lambda/tsup.config.ts")]
+      ))
+    )
   }
 
   provisioner "local-exec" {
@@ -93,7 +99,7 @@ resource "aws_lambda_function" "discord_bot_handler" {
 
   environment {
     variables = {
-      #! Cannot pass in AWS_REGION (reserved)
+      #! AWS_REGION is reserved by AWS Lambda
       # AWS_REGION         = var.aws_region
       INSTANCE_ID        = var.instance_id
       DISCORD_PUBLIC_KEY = var.discord_public_key
@@ -101,8 +107,8 @@ resource "aws_lambda_function" "discord_bot_handler" {
   }
 }
 
-#? Expose the Lambda directly via Lambda Function URLs for simplicity (no API Gateway)
+#? Verify requests using Discord public key
 resource "aws_lambda_function_url" "discord_bot_handler_url" {
   function_name      = aws_lambda_function.discord_bot_handler.function_name
-  authorization_type = "NONE" #? No auth since we'll verify requests using the Discord public key
+  authorization_type = "NONE"
 }

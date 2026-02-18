@@ -68,7 +68,7 @@ resource "aws_dlm_lifecycle_policy" "snapshots" {
 
     #? 1 and 2 day retention
     schedule {
-      name = "1 and 2 day snapshot"
+      name = "1 and 2 day retention"
       create_rule {
         cron_expression = "cron(0 9 ? * * *)"
       }
@@ -81,7 +81,7 @@ resource "aws_dlm_lifecycle_policy" "snapshots" {
 
     #? 4 and 8 day retention
     schedule {
-      name = "4 and 8 day snapshot"
+      name = "4 and 8 day retention"
       create_rule {
         cron_expression = "cron(0 9 */4 * ? *)"
       }
@@ -94,7 +94,7 @@ resource "aws_dlm_lifecycle_policy" "snapshots" {
 
     #? 16 and 32 day retention
     schedule {
-      name = "16 and 32 day snapshot"
+      name = "16 and 32 day retention"
       create_rule {
         cron_expression = "cron(0 9 */16 * ? *)"
       }

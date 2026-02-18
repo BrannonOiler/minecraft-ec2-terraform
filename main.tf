@@ -29,6 +29,7 @@ provider "aws" {
 }
 
 ###! THIS SECTION MUST BE APPLIED FIRST ###
+###! TEMPORARILY COMMENT OUT THE REST OF main.tf UNTIL THIS IS APPLIED ###
 #? Generate SSH key pair locally (if not already present)
 resource "null_resource" "generate_ssh_key" {
   provisioner "local-exec" {
