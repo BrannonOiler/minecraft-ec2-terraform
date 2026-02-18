@@ -6,14 +6,14 @@ The mod used is [Homestead - A Cozy Survival Experience](https://www.curseforge.
 
 ## Features
 
-- [x] EC2 instance with security group allowing Minecraft traffic (25565/tcp)
-- [x] S3 backend for Terraform state management
-- [x] Automated setup of Minecraft server software on the EC2 instance
-- [x] A systemd timer job to automatically shut down the server when no players are online
-- [x] Set whitelist permissions via Terraform variables
-- [x] Set up RCON for remote server management
-- [x] EBS snapshot lifecycle management for backups
-- [ ] A Discord bot for server status and management commands
+- EC2 instance with security group allowing Minecraft traffic (25565/tcp)
+- S3 backend for Terraform state management
+- Automated setup of Minecraft server software on the EC2 instance
+- A systemd timer job to automatically shut down the server when no players are online
+- Set whitelist permissions via Terraform variables
+- Set up RCON for remote server management
+- EBS snapshot lifecycle management for backups
+- A Discord bot for server status and management commands
 
 ## Potential Future Enhancements
 
@@ -41,21 +41,33 @@ The mod used is [Homestead - A Cozy Survival Experience](https://www.curseforge.
 
 ## Variables
 
-- `aws_region`: AWS region to deploy the EC2 instance. Default: `us-east-2`
-- `vpc_id`: VPC ID where the EC2 instance will be deployed. Default: `vpc-4bd37320` (us-east-2 main VPC)
-- `subnet_id`: Subnet ID for the EC2 instance. Default: `subnet-bcf830d7` (us-east-2a subnet)
-- `ami_id`: AMI ID for the EC2 instance. Default: `ami-024c678eb6c1de869` (Amazon Linux 2023 - kernel 6.12, ARM)
+- `ami_id`: AMI ID for the EC2 instance.
+  - Default: `ami-024c678eb6c1de869` (Amazon Linux 2023 - kernel 6.12, ARM)
   - To use x86, update to `ami-0401b65de01e90bd8` (Amazon Linux 2023 - kernel 6.12, x86)
-- `instance_type`: EC2 instance type for the Minecraft server. Default: `r7g.large` (2 vCPUs, 16 GiB RAM, memory optimized)
-  - Other options: `t4g.xlarge` (4 vCPUs, 16 GiB RAM), `r8g.large` (2 vCPUs, 16 GiB RAM, newer gen)
-- `instance_name`: Name for the Minecraft EC2 instance. Default: `minecraft-server-01`
-- `ssh_key_pair_name`: Name of the EC2 key pair for SSH access. Default: `minecraft-server-01-key-pair`
-- `ssh_key_pair_path`: Path to the SSH private key for accessing the EC2 instance. Default: `~/.ssh/personal-keys`
-- `whitelist`: List of Minecraft usernames to whitelist on the server. Default: `[]`. Format:
-  - Each entry is an object: `{ uuid = string, name = string }`
+- `aws_region`: AWS region to deploy the EC2 instance.
+  - Default: `us-east-2`
+- `discord_public_key`: The public key from Discord for verifying incoming interactions.
+  - Default: `<MY_DISCORD_PUBLIC_KEY>`
+- `instance_name`: Name for the Minecraft EC2 instance.
+  - Default: `minecraft-server-01`
+- `instance_type`: EC2 instance type for the Minecraft server.
+  - Default: `r7g.large` (2 vCPUs, 16 GiB RAM, $0.1071 hourly, memory optimized)
+  - Other options: `t4g.xlarge` (4 vCPUs, 16 GiB RAM, $0.1344 hourly), `r8g.large` (2 vCPUs, 16 GiB RAM, $0.1178 hourly, newer gen)
+- `ssh_key_pair_name`: Name of the EC2 key pair for SSH access.
+  - Default: `minecraft-server-01-key-pair`
+- `ssh_key_pair_path`: Path to the SSH private key for accessing the EC2 instance.
+  - Default: `~/.ssh/personal-keys`
+- `subnet_id`: Subnet ID for the EC2 instance.
+  - Default: `subnet-bcf830d7` (us-east-2a subnet)
+- `vpc_id`: VPC ID where the EC2 instance will be deployed.
+  - Default: `vpc-4bd37320` (us-east-2 main VPC)
+- `whitelist`: List of Minecraft usernames to whitelist on the server.
+  - Default: `[]`
+  - Format: Each entry is an object: `{ uuid = string, name = string }`
 
 ## Outputs
 
-- `minecraft_connection_string`: Connection string for Minecraft client
-- `public_ip`: Public IP address of the Minecraft server
-- `rcon_password`: Generated RCON password for remote server management
+- `discord_bot_lambda_function_url`: URL of the Discord bot Lambda function.
+- `minecraft_connection`: Minecraft server connection string.
+- `public_ip`: Public IP address of the Minecraft server.
+- `rcon_password`: RCON password for remote server management.
