@@ -1,4 +1,4 @@
-# Minecraft Server on AWS Lightsail with Terraform
+# Minecraft Server on EC2 with Terraform
 
 This Terraform project provisions a modded Minecraft server on EC2. Follow the setup below and the instructions in `docs/instructions.md` to set up the server and install Minecraft.
 
