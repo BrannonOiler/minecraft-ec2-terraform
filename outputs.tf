@@ -13,3 +13,8 @@ output "rcon_password" {
   value       = random_password.rcon_password.result
   sensitive   = true
 }
+
+output "discord_bot_lambda_function_url" {
+  description = "URL of the Discord bot Lambda function."
+  value       = module.discord_bot_lambda.discord_bot_lambda_function_url
+}

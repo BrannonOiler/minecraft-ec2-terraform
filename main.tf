@@ -225,4 +225,10 @@ module "ebs_backup" {
   device_name = "/dev/xvda"
 }
 
-
+#? Discord Bot Lambda Function Module
+module "discord_bot_lambda" {
+  source             = "./modules/discord-bot-lambda"
+  discord_public_key = var.discord_public_key
+  instance_id        = aws_instance.minecraft-server.id
+  aws_region         = var.aws_region
+}

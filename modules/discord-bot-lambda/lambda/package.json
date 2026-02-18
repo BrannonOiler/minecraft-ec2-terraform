@@ -1,0 +1,21 @@
+{
+  "name": "discord-bot-lambda",
+  "version": "1.0.0",
+  "description": "A Lambda function to handle Discord bot commands for Minecraft server management",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "yarn && tsup"
+  },
+  "dependencies": {
+    "@aws-sdk/client-ec2": "3.990.0",
+    "discord-interactions": "4.4.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "8.10.160",
+    "@types/express": "5.0.6",
+    "@types/node": "25.2.3",
+    "nodemon": "3.1.11",
+    "tsup": "8.5.1",
+    "typescript": "5.9.3"
+  }
+}

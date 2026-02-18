@@ -15,8 +15,10 @@ silently sudo dnf update -y
 echo_info "Installing necessary packages: Java 17 (Amazon Corretto), netcat, pip, unzip..."
 silently sudo dnf install -y firewall-cmd java-17-amazon-corretto nc python3-pip unzip
 
-echo_info "Installing mcstatus using pip..."
-silently pip3 install mcstatus --user
+#! This must be installed as root so that mcstatus is available to systemd services/timers
+#? Installs to /usr/local/bin/mcstatus
+echo_info "Installing mcstatus using pip...."
+silently sudo pip3 install mcstatus
 
 echo_success "Package installation complete."
 
@@ -144,6 +146,7 @@ echo "$auto_shutdown_timer" | silently sudo tee /etc/systemd/system/auto-shutdow
 
 echo_info "Reloading systemd and enabling auto-shutdown timer..."
 silently sudo systemctl daemon-reload
+silently sudo systemctl enable auto-shutdown.service
 silently sudo systemctl enable auto-shutdown.timer
 silently sudo systemctl restart auto-shutdown.timer
 

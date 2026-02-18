@@ -1,26 +1,26 @@
+variable "ami_id" {
+  description = "AMI ID for the EC2 instance."
+  type        = string
+  default     = "ami-024c678eb6c1de869" # Amazon Linux 2023 - kernel 6.12 (ARM)
+  # default     = "ami-0401b65de01e90bd8" # Amazon Linux 2023 - kernel 6.12 (x86)
+}
+
 variable "aws_region" {
   description = "AWS region to deploy the EC2 instance."
   type        = string
   default     = "us-east-2"
 }
 
-variable "vpc_id" {
-  description = "VPC ID where the EC2 instance will be deployed."
+variable "discord_public_key" {
+  description = "The public key from Discord for verifying incoming interactions."
   type        = string
-  default     = "vpc-4bd37320" # us-east-2 main VPC
+  default     = "618a0cc8885a3e05fe788095e7f334a2dceebc383365c05bc2b0164abc0fa869"
 }
 
-variable "subnet_id" {
-  description = "Subnet ID for the EC2 instance."
+variable "instance_name" {
+  description = "Name for the Minecraft EC2 instance."
   type        = string
-  default     = "subnet-bcf830d7" # us-east-2a subnet
-}
-
-variable "ami_id" {
-  description = "AMI ID for the EC2 instance."
-  type        = string
-  default     = "ami-024c678eb6c1de869" # Amazon Linux 2023 - kernel 6.12 (ARM)
-  # default     = "ami-0401b65de01e90bd8" # Amazon Linux 2023 - kernel 6.12 (x86)
+  default     = "minecraft-server-01"
 }
 
 variable "instance_type" {
@@ -32,12 +32,6 @@ variable "instance_type" {
   # default    = "r8g.large" # 2 vCPUs, 16 GiB RAM, $0.1178 hourly, memory optimized, newer gen
 }
 
-variable "instance_name" {
-  description = "Name for the Minecraft EC2 instance."
-  type        = string
-  default     = "minecraft-server-01"
-}
-
 variable "ssh_key_pair_name" {
   description = "Name of the EC2 key pair for SSH access."
   type        = string
@@ -47,6 +41,18 @@ variable "ssh_key_pair_name" {
 variable "ssh_key_pair_path" {
   description = "Path to the SSH private key for accessing the EC2 instance."
   default     = "~/.ssh/personal-keys"
+}
+
+variable "subnet_id" {
+  description = "Subnet ID for the EC2 instance."
+  type        = string
+  default     = "subnet-bcf830d7" # us-east-2a subnet
+}
+
+variable "vpc_id" {
+  description = "VPC ID where the EC2 instance will be deployed."
+  type        = string
+  default     = "vpc-4bd37320" # us-east-2 main VPC
 }
 
 variable "whitelist" {
