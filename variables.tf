@@ -26,10 +26,10 @@ variable "instance_name" {
 variable "instance_type" {
   description = "EC2 instance type for the Minecraft server."
   type        = string
-  default     = "r7g.large" # 2 vCPUs, 16 GiB RAM, $0.1071 hourly, memory optimized
+  default     = "r8g.large" # 2 vCPUs, 16 GiB RAM, Graviton4, memory optimized
   ## Other options:
   # default     = "t4g.xlarge" # 4 vCPUs16, GiB RAM, $0.1344 hourly
-  # default    = "r8g.large" # 2 vCPUs, 16 GiB RAM, $0.1178 hourly, memory optimized, newer gen
+  # default     = "r7g.large" # 2 vCPUs, 16 GiB RAM, memory optimized, previous generation
 }
 
 variable "ssh_key_pair_name" {

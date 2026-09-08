@@ -51,8 +51,8 @@ The mod used is [Homestead - A Cozy Survival Experience](https://www.curseforge.
 - `instance_name`: Name for the Minecraft EC2 instance.
   - Default: `minecraft-server-01`
 - `instance_type`: EC2 instance type for the Minecraft server.
-  - Default: `r7g.large` (2 vCPUs, 16 GiB RAM, $0.1071 hourly, memory optimized)
-  - Other options: `t4g.xlarge` (4 vCPUs, 16 GiB RAM, $0.1344 hourly), `r8g.large` (2 vCPUs, 16 GiB RAM, $0.1178 hourly, newer gen)
+  - Default: `r8g.large` (2 vCPUs, 16 GiB RAM, Graviton4, memory optimized)
+  - Other options: `t4g.xlarge` (4 vCPUs, 16 GiB RAM), `r7g.large` (2 vCPUs, 16 GiB RAM, previous generation)
 - `ssh_key_pair_name`: Name of the EC2 key pair for SSH access.
   - Default: `minecraft-server-01-key-pair`
 - `ssh_key_pair_path`: Path to the SSH private key for accessing the EC2 instance.
