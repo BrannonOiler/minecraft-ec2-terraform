@@ -1,20 +1,19 @@
 output "discord_bot_lambda_function_url" {
-  description = "URL of the Discord bot Lambda function."
+  description = "Discord interactions endpoint URL."
   value       = module.discord_bot_lambda.discord_bot_lambda_function_url
 }
 
-output "minecraft_connection" {
-  description = "Minecraft server connection string."
-  value       = "${aws_eip.minecraft-server-eip.public_ip}:25565"
+output "minecraft_connections" {
+  description = "Minecraft connection address by stable server key."
+  value       = { for key, server in module.minecraft_server : key => server.connection }
 }
 
-output "public_ip" {
-  description = "Public IP address of the Minecraft server."
-  value       = aws_eip.minecraft-server-eip.public_ip
+output "instance_ids" {
+  description = "EC2 instance ID by stable server key."
+  value       = { for key, server in module.minecraft_server : key => server.instance_id }
 }
 
-output "rcon_password" {
-  description = "RCON password for remote server management."
-  value       = random_password.rcon_password.result
-  sensitive   = true
+output "data_volume_ids" {
+  description = "Protected Minecraft world volume by server key."
+  value       = { for key, server in module.minecraft_server : key => server.data_volume_id }
 }

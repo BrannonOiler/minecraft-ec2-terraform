@@ -1,55 +1,86 @@
 #!/bin/bash
+set -euo pipefail
 
-#? Check if arguments are provided
-if [ $# -lt 2 ]; then
-    echo "Usage: $0 <DISCORD_APPLICATION_ID> <DISCORD_TOKEN>"
+if [ $# -lt 3 ]; then
+    echo "Usage: $0 <DISCORD_APPLICATION_ID> <DISCORD_TOKEN> <GUILD_ID>"
+    echo "Global replacement is intentionally separate: $0 <DISCORD_APPLICATION_ID> <DISCORD_TOKEN> --replace-global"
+    echo "Safe legacy cleanup: $0 <DISCORD_APPLICATION_ID> <DISCORD_TOKEN> --remove-legacy-global"
     exit 1
 fi
 
-## ARGS AND CONFIG
-DISCORD_APPLICATION_ID="$1"
-DISCORD_TOKEN="$2"
-DISCORD_COMMANDS_URL="https://discord.com/api/v9/applications/${DISCORD_APPLICATION_ID}/commands"
-COMMANDS=(
-    '{"name":"start","description":"Start the Minecraft server"}'
-    '{"name":"stop","description":"Stop the Minecraft server"}'
-    '{"name":"status","description":"Get the status of the Minecraft server"}'
-)
+application_id="$1"
+token="$2"
+target="$3"
 
-#? Remove existing commands
-existing_commands=$(curl -s -H "Authorization: Bot ${DISCORD_TOKEN}" "$DISCORD_COMMANDS_URL")
-if [ -n "$existing_commands" ]; then
-    command_ids=$(echo "$existing_commands" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
-    for id in $command_ids; do
-        delete_response=$(curl -s -w "\n%{http_code}" -X DELETE "$DISCORD_COMMANDS_URL/$id" \
-            -H "Authorization: Bot ${DISCORD_TOKEN}")
-        delete_http_code=$(echo "$delete_response" | tail -n1)
-        if [ "$delete_http_code" -eq 204 ]; then
-            echo "✓ Deleted existing command with ID: $id"
-        else
-            echo "✗ Failed to delete command with ID: $id (HTTP $delete_http_code)"
-        fi
-    done
+if [ "$target" = "--remove-legacy-global" ]; then
+    echo "Removing only legacy global /mc commands."
+    DISCORD_APPLICATION_ID="$application_id" DISCORD_TOKEN="$token" node <<'NODE'
+const applicationId = process.env.DISCORD_APPLICATION_ID;
+const token = process.env.DISCORD_TOKEN;
+const baseUrl = `https://discord.com/api/v10/applications/${applicationId}/commands`;
+const legacyNames = new Set(["mc"]);
+
+(async () => {
+  const headers = { Authorization: `Bot ${token}` };
+  const list = await fetch(baseUrl, { headers });
+  if (!list.ok) {
+    console.error(`Discord command lookup failed (HTTP ${list.status}).`);
+    process.exit(1);
+  }
+
+  const commands = await list.json();
+  const legacyCommands = commands.filter((command) => legacyNames.has(command.name));
+  for (const command of legacyCommands) {
+    const response = await fetch(`${baseUrl}/${command.id}`, { method: "DELETE", headers });
+    if (!response.ok) {
+      console.error(`Could not remove /${command.name} (HTTP ${response.status}).`);
+      process.exit(1);
+    }
+    console.log(`Removed legacy global /${command.name}.`);
+  }
+  if (legacyCommands.length === 0) console.log("No legacy global commands found.");
+})().catch((error) => {
+  console.error("Discord legacy-command cleanup failed.", error);
+  process.exit(1);
+});
+NODE
+    exit $?
+elif [ "$target" = "--replace-global" ]; then
+    commands_url="https://discord.com/api/v10/applications/${application_id}/commands"
+    echo "Replacing all global commands for this application."
 else
-    echo "No existing commands to delete."
+    commands_url="https://discord.com/api/v10/applications/${application_id}/guilds/${target}/commands"
 fi
 
-#? Register each {command}
-for command in "${COMMANDS[@]}"; do
-    response=$(curl -s -w "\n%{http_code}" -X POST "$DISCORD_COMMANDS_URL" \
-        -H "Authorization: Bot ${DISCORD_TOKEN}" \
-        -H "Content-Type: application/json" \
-        -d "$command")
+command_payload='[
+  {
+    "name": "start",
+    "description": "Start a Minecraft server",
+    "options": [{ "type": 3, "name": "server", "description": "Choose a server", "required": true, "autocomplete": true }]
+  },
+  {
+    "name": "stop",
+    "description": "Gracefully stop a Minecraft server",
+    "options": [{ "type": 3, "name": "server", "description": "Choose a server", "required": true, "autocomplete": true }]
+  },
+  {
+    "name": "status",
+    "description": "Show Minecraft fleet status"
+  }
+]'
 
-    http_code=$(echo "$response" | tail -n1)
-    body=$(echo "$response" | sed '$d')
+response=$(curl --silent --show-error --write-out "\n%{http_code}" \
+    --request PUT "$commands_url" \
+    --header "Authorization: Bot ${token}" \
+    --header "Content-Type: application/json" \
+    --data "$command_payload")
+http_code=$(echo "$response" | tail -n1)
+body=$(echo "$response" | sed '$d')
 
-    command_name=$(echo "$command" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
-
-    if [ "$http_code" -eq 201 ] || [ "$http_code" -eq 200 ]; then
-        echo "✓ Command '$command_name' created: $http_code"
-    else
-        echo "✗ Command '$command_name' failed: $http_code"
-        echo "  Response: $body"
-    fi
-done
+if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+    echo "Registered /start, /stop, and /status fleet commands successfully."
+else
+    echo "Discord command registration failed (HTTP $http_code)."
+    echo "$body"
+    exit 1
+fi

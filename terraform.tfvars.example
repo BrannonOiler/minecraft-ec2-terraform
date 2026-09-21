@@ -1,0 +1,64 @@
+aws_region               = "us-east-2"
+vpc_id                   = "vpc-REPLACE_ME"
+discord_public_key       = "REPLACE_ME"
+discord_allowed_guild_id = "YOUR_DISCORD_GUILD_ID"
+
+# Use a permanent artifact URL and its exact SHA-256. The migrated existing
+# Homestead server can temporarily use an empty digest because it will not
+# download the archive until it is rebuilt.
+server_profiles = {
+  homestead-1-2-9-4 = {
+    archive_url       = "https://artifacts.example.net/homestead-1.2.9.4.zip"
+    archive_sha256    = ""
+    archive_directory = "Homestead1.2.9.4"
+    java_major        = 17
+    start_command     = "/bin/bash start.sh"
+  }
+
+  vanilla-1-21 = {
+    archive_url       = "https://artifacts.example.net/vanilla-1.21.zip"
+    # Replace with the artifact's published SHA-256 before applying.
+    archive_sha256    = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    archive_directory = ""
+    java_major        = 21
+    start_command     = "/bin/bash start.sh"
+  }
+}
+
+# Omit server_settings to use the fleet defaults: PvP off, normal survival,
+# four players, blank MOTD, view/simulation distance 10, flight off, and no
+# spawn protection. Override only the values that differ for a server.
+
+servers = {
+  # First apply: creates and attaches the protected data volume but leaves the
+  # current root-disk world untouched. Set migrate_existing_data = true only
+  # after reviewing the migration plan and taking a manual root-volume snapshot.
+  homestead = {
+    display_name          = "Homestead"
+    profile               = "homestead-1-2-9-4"
+    instance_name         = "minecraft-server-01"
+    ami_id                = "ami-024c678eb6c1de869"
+    instance_type         = "r8g.large"
+    subnet_id             = "subnet-REPLACE_ME"
+    data_volume_size_gib  = 80
+    migrate_existing_data = false
+    additional_whitelist  = []
+    additional_ops        = []
+  }
+
+  vanilla = {
+    display_name         = "Vanilla"
+    profile              = "vanilla-1-21"
+    ami_id               = "ami-REPLACE_ME"
+    instance_type        = "t4g.large"
+    subnet_id            = "subnet-REPLACE_ME"
+    data_volume_size_gib = 40
+    minecraft_port       = 25566
+    additional_whitelist = []
+    additional_ops       = []
+    server_settings = {
+      difficulty  = "hard"
+      max_players = 8
+    }
+  }
+}

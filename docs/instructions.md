@@ -1,72 +1,66 @@
-# Instructions
+# Fleet operations
 
-Use these instructions to:
+## Deploy safely
 
-- Set up and connect to the Minecraft server (via Prism Launcher).
-- Connect to the EC2 instance via SSH for server management.
-- Set up the Discord bot via the developer portal and register the slash commands.
+1. Authenticate to AWS and run `terraform init` followed by a saved plan.
+2. For the first fleet apply, require zero replacement of the existing
+   Homestead instance, Elastic IP, or root volume.
+3. Apply the initial configuration with Homestead's
+   `migrate_existing_data = false`.
+4. Confirm it is an SSM managed node and that the new data volume is attached.
+5. Take a manual root-volume snapshot, set `migrate_existing_data = true`, and
+   apply the second reviewed plan during a maintenance window.
+6. Confirm `/srv/minecraft` is mounted, the old root-world directory remains
+   as a dated rollback copy, Minecraft starts, and `/status` reports the
+   expected address.
 
-## Setup Minecraft Client
+If migration fails before the symlink switch, the original root world remains
+active. If it fails after the switch, stop Minecraft through SSM, repoint
+`/home/ec2-user/minecraft-server` at the dated root backup, then restart the
+service.
 
-1. Open Prism Launcher
-2. Select "Add Instance"
-   1. Find "Homestead - A Cozy Survival Experience" under the curseforge mods
-   2. Make sure to download the manual mods that cannot be downloaded automatically
-3. Join the server using the public IP: <SERVER_IP>:25565
+## Profile management
 
-## SSH Access and Server Management
+Store server archives somewhere durable, preferably a versioned private object
+store. Compute its SHA-256 locally and record it in `server_profiles`. Do not
+use expiring download links for new profiles. A changed profile checksum is a
+new profile version; point servers at it only after validating it on a staging
+server.
 
-- Connect via SSH:
-  ```sh
-  ssh -i ~/.ssh/personal-keys/minecraft-server-01-key-pair ec2-user@<SERVER_IP>
-  ```
-- Restart/start/stop the server:
-  ```sh
-  sudo systemctl restart minecraft.service
-  sudo systemctl start minecraft.service
-  sudo systemctl stop minecraft.service
-  ```
-- Check the status, view logs of the server:
-  ```sh
-  sudo systemctl status minecraft.service
-  sudo journalctl -u minecraft.service -f
-  ```
+## Discord setup
 
-## Discord Bot Setup
+Set the Discord application name, icon, and banner manually in the developer
+portal to a fleet-oriented identity. Set its Interactions Endpoint URL to the
+Terraform output, disable User Install, and register guild commands:
 
-<!-- 1. Create a bot at https://discord.com/developers/applications/
-    1. Under “OAuth2”, select the “bot” scope then give the following permissions:
-        1. Send Messages
-        2. Manage Messages
-        3. Read Message History
-    2. Change integration type to “Guild Install” and copy the generated URL
-        1. https://discord.com/oauth2/authorize?client_id=1471543096297783520&permissions=75776&integration_type=0&scope=bot
-    3. Enable “Message Content Intent” under “Bot” settings
-    4. Give it the following permissions (Permissions integer 75776): -->
+```sh
+./scripts/register-discord-commands.sh APPLICATION_ID BOT_TOKEN GUILD_ID
+```
 
-1. Navigate to https://discord.com/developers/applications/ to create a bot
-2. Under the `General Information` tab:
-   1. Give it a name (`MCServerBot`) and a description - `Start, stop and view the status of our Homestead Minecraft server.`
-   2. Copy the public key and add it to variables.tf under `discord_public_key`
-   3. Once the terraform apply is complete, copy the function URL from the output and paste it into `Interactions Endpoint URL` in the Discord developer portal under "General Information"
-3. Under the `Bot` tab:
-   1. Set the icon and banner using the images in the `assets` folder
-   2. Enable `Message Content Intent`
-4. Run the `register-discord-commands.sh` script to register the slash commands with Discord:
+The bot token belongs only in that interactive command. Never place it in a
+tfvars file or repository.
 
-   ```sh
-   ./scripts/register-discord-commands.sh <DISCORD_APPLICATION_ID> <DISCORD_TOKEN>
-   ```
+## State backend follow-up
 
-   - `DISCORD_APPLICATION_ID` is under the `General Information` tab
-   - `DISCORD_TOKEN` is under the `Bot` tab under `Token`. Keep this token secret!
+The current S3 backend intentionally retains its DynamoDB lock table during
+the fleet migration. Move to the provider's newer S3 lock mechanism only after
+the data migration is complete and two reviewed applies have succeeded without
+drift. Treat that as a separate state-backend change with a backup of the state
+object and an observed lock-free window.
 
-5. Under the `Installation` tab:
-   1. Make sure `User Install` and `Guild Install` are both enabled
+## Restore and decommission
 
-6. Under the OAuth2 tab:
-   1. Select `bot` under `Scopes` and the following permissions:
-      1. Send Messages
-      2. Manage Messages
-      3. Read Message History
-   2. Copy the generated URL and to add the bot to your server
+To restore a world, create an EBS volume from a server's tagged snapshot,
+attach it in the same availability zone, mount it through SSM, and verify the
+world before replacing the active data volume.
+
+To decommission a server, first run:
+
+```sh
+./scripts/decommission-server.sh SERVER_KEY VOLUME_ID AWS_REGION
+```
+
+Wait for and record the final snapshot ID. Then remove the server only after
+intentionally disabling its data-volume lifecycle protection in a reviewed
+change; this guard prevents an accidental map-entry deletion from destroying a
+world.

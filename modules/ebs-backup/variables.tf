@@ -1,15 +1,9 @@
-variable "instance_id" {
-  description = "The ID of the EC2 instance whose root EBS volume will be backed up."
+variable "project_tag" {
+  description = "Project tag required on protected Minecraft data volumes."
   type        = string
 }
 
-variable "volume_id" {
-  description = "The ID of the EBS volume to back up."
-  type        = string
-}
-
-variable "device_name" {
-  description = "The device name of the EBS volume (e.g., /dev/xvda)."
-  type        = string
-  default     = "/dev/xvda"
+variable "volume_ids" {
+  description = "Minecraft EBS volumes keyed by stable server identifier."
+  type        = map(string)
 }

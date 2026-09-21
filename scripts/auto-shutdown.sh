@@ -1,43 +1,36 @@
 #!/bin/bash
-#? Checks number of players on the Minecraft server and shuts down if two consecutive checks are zero
+set -u
 
-# CONSTANTS
-MC_HOST="localhost"
-MC_PORT=25565
+mc_host="localhost"
+mc_port="${MC_PORT:-25565}"
+required_empty_checks="${MC_AUTO_SHUTDOWN_CHECKS:-2}"
+empty_count_file="/tmp/mc-empty-check-count.txt"
 
-# Player count file (to store previous count)
-player_count_file="/tmp/mc-player-count.txt"
-
-# Get the previous player count
-#? Set to -1 if the file doesn't exist to avoid shutdown on first run
-prev_count=$(head -n 1 "$player_count_file" 2>/dev/null || echo "-1")
-echo "Previous: $prev_count"
-echo
-
-# Use mcstatus to get current player count
-mcstatus_output=$(mcstatus "$MC_HOST" status 2>&1)
+previous_empty_checks=$(head -n 1 "$empty_count_file" 2>/dev/null || echo "0")
+mcstatus_output=$(mcstatus "${mc_host}:${mc_port}" status 2>&1)
 echo "$mcstatus_output"
-echo
 
-#? Handle potential errors from mcstatus
-if [[ "$mcstatus_output" == *"Error"* ]]; then
-    echo "Error: $mcstatus_output"
-    player_count=0
-else
-    player_count=$(echo "$mcstatus_output" | grep -oP 'players: \K\d+')
+# A failed status request could mean the server is still booting. Never treat it
+# as an empty server, because that could shut the instance down during startup.
+if ! player_count=$(echo "$mcstatus_output" | grep -oP 'players: \K\d+'); then
+    echo "Could not determine player count; leaving the instance running."
+    echo "0" >"$empty_count_file"
+    exit 0
 fi
-echo "Current: $player_count"
 
-# Update {player_count_file} with the current count
-echo "$player_count" >"$player_count_file"
-echo
+echo "Current players: $player_count"
+if [ "$player_count" -gt 0 ]; then
+    echo "0" >"$empty_count_file"
+    echo "Players are online; leaving the instance running."
+    exit 0
+fi
 
-# Shutdown the EC2 instance if {player_count} and {prev_count} are both zero
-if [[ "$player_count" -eq 0 && "$prev_count" -eq 0 ]]; then
-    echo "No players 2 checks in a row. Shutting down."
+empty_checks=$((previous_empty_checks + 1))
+echo "$empty_checks" >"$empty_count_file"
+
+if [ "$empty_checks" -ge "$required_empty_checks" ]; then
+    echo "No players for ${empty_checks} consecutive checks; shutting down."
     sudo shutdown -h now
-elif [[ "$player_count" -eq 0 ]]; then
-    echo "No players online. Will check again before shutting down."
 else
-    echo "Players online. No shutdown needed."
+    echo "No players online (${empty_checks}/${required_empty_checks}); checking again later."
 fi

@@ -49,60 +49,37 @@ resource "aws_iam_role_policy" "dlm_lifecycle" {
 
 #? Tag the EBS volume for snapshot targeting
 resource "aws_ec2_tag" "snapshot_tag" {
-  resource_id = var.volume_id
-  key         = "Snapshot"
-  value       = "true"
+  for_each = var.volume_ids
+
+  resource_id = each.value
+  key         = "Backup"
+  value       = "minecraft"
 }
 
-#? DLM Lifecycle Policy for EBS Snapshots (powers of 2 retention)
+#? DLM Lifecycle Policy for one weekly, short-term recovery point.
 resource "aws_dlm_lifecycle_policy" "snapshots" {
-  description        = "EBS snapshot policy for Minecraft server volume"
+  description        = "EBS snapshot policy for Minecraft fleet volumes"
   execution_role_arn = aws_iam_role.dlm_lifecycle_role.arn
   state              = "ENABLED"
 
   policy_details {
     resource_types = ["VOLUME"]
     target_tags = {
-      Snapshot = "true"
+      Backup  = "minecraft"
+      Project = var.project_tag
     }
 
-    #? 1 and 2 day retention
+    # Sunday 09:00 UTC; a single point-in-time recovery snapshot per data volume.
     schedule {
-      name = "1 and 2 day retention"
+      name = "weekly one snapshot retention"
       create_rule {
-        cron_expression = "cron(0 9 ? * * *)"
+        cron_expression = "cron(0 9 ? * SUN *)"
       }
       retain_rule {
-        count = 2
+        count = 1
       }
       tags_to_add = { SnapshotCreator = "DLM" }
-      copy_tags   = false
-    }
-
-    #? 4 and 8 day retention
-    schedule {
-      name = "4 and 8 day retention"
-      create_rule {
-        cron_expression = "cron(0 9 */4 * ? *)"
-      }
-      retain_rule {
-        count = 2
-      }
-      tags_to_add = { SnapshotCreator = "DLM" }
-      copy_tags   = false
-    }
-
-    #? 16 and 32 day retention
-    schedule {
-      name = "16 and 32 day retention"
-      create_rule {
-        cron_expression = "cron(0 9 */16 * ? *)"
-      }
-      retain_rule {
-        count = 2
-      }
-      tags_to_add = { SnapshotCreator = "DLM" }
-      copy_tags   = false
+      copy_tags   = true
     }
   }
 }

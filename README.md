@@ -1,73 +1,90 @@
-# Minecraft Server on EC2 with Terraform
+# Minecraft fleet on EC2
 
-This Terraform project provisions a modded Minecraft server on EC2. Follow the setup below and the instructions in `docs/instructions.md` to set up the server and install Minecraft.
+This project manages multiple Minecraft servers as a Terraform fleet. Each
+server has an EC2 instance, a launch-time public IP, encrypted persistent world volume,
+profile-verified installation, SSM-based configuration, scheduled snapshots,
+and Discord control through one shared bot.
 
-The mod used is [Homestead - A Cozy Survival Experience](https://www.curseforge.com/minecraft/modpacks/homestead-cozy). Feel free to modify the setup to use a different modpack or vanilla Minecraft.
+## Server model
 
-## Features
+Each `servers` entry selects a named `server_profiles` entry. Profiles provide
+an immutable archive URL, SHA-256 digest, expected archive layout, Java
+version, and start command. Terraform rejects unknown profiles; first boot
+rejects an archive whose checksum or expected files do not match.
 
-- EC2 instance with security group allowing Minecraft traffic (25565/tcp)
-- S3 backend for Terraform state management
-- Automated setup of Minecraft server software on the EC2 instance
-- A systemd timer job to automatically shut down the server when no players are online
-- Set whitelist permissions via Terraform variables
-- Set up RCON for remote server management
-- EBS snapshot lifecycle management for backups
-- A Discord bot for server status and management commands
+Copy [terraform.tfvars.example](terraform.tfvars.example) to a private tfvars
+file and replace all placeholder values. Stable server keys are used in state,
+tags, backups, and Discord commands; never rename one without a Terraform
+`moved` declaration.
 
-## Potential Future Enhancements
+## Existing Homestead migration
 
-- Modularize to allow multiple server instances with different mods/configurations
+The first rollout is intentionally two-stage:
 
-## Prerequisites
+1. Apply with `migrate_existing_data = false`. Review the plan to confirm that
+   Homestead's EC2 instance, Elastic IP, and root volume are not replaced. This
+   creates and attaches its encrypted data volume.
+2. Take a manual snapshot of the existing root volume. Set
+   `migrate_existing_data = true` and apply the reviewed plan during a quiet
+   window. SSM stops Minecraft, copies and verifies the world, preserves the
+   root-disk source as a rollback directory, mounts the data volume at
+   `/srv/minecraft`, and restarts the server.
 
-- [Terraform](https://www.terraform.io/downloads.html)
-- AWS account and credentials configured (e.g., via `aws configure`)
+The data volume has Terraform deletion protection. Use the documented
+decommission workflow before removing a server from the fleet.
 
-## Setup
+## Discord
 
-<i>Follow this process first with only the `generate_ssh_key` resource uncommented to create the SSH key pair. Then uncomment the rest and run again to create the EC2 instance.</i>
+```text
+/status
+/start → choose a server
+/stop → choose a server
+```
 
-1. Update variables in `variables.tf` (or create a `terraform.tfvars` file to override defaults)
-2. Initialize Terraform:
-   ```sh
-   terraform init
-   ```
-3. Apply the configuration:
-   ```sh
-   terraform apply
-   ```
-4. Note the output for the public IP and Minecraft connection string.
+`/stop` stops Minecraft through SSM, flushes filesystem writes, then shuts
+the instance down. The bot accepts interactions only from the configured guild
+when `discord_allowed_guild_id` is set, verifies signed requests, rejects stale
+requests, and deduplicates interaction IDs for 15 minutes.
 
-## Variables
+## Fleet whitelist
 
-- `ami_id`: AMI ID for the EC2 instance.
-  - Default: `ami-024c678eb6c1de869` (Amazon Linux 2023 - kernel 6.12, ARM)
-  - To use x86, update to `ami-0401b65de01e90bd8` (Amazon Linux 2023 - kernel 6.12, x86)
-- `aws_region`: AWS region to deploy the EC2 instance.
-  - Default: `us-east-2`
-- `discord_public_key`: The public key from Discord for verifying incoming interactions.
-  - Default: `<MY_DISCORD_PUBLIC_KEY>`
-- `instance_name`: Name for the Minecraft EC2 instance.
-  - Default: `minecraft-server-01`
-- `instance_type`: EC2 instance type for the Minecraft server.
-  - Default: `r8g.large` (2 vCPUs, 16 GiB RAM, Graviton4, memory optimized)
-  - Other options: `t4g.xlarge` (4 vCPUs, 16 GiB RAM), `r7g.large` (2 vCPUs, 16 GiB RAM, previous generation)
-- `ssh_key_pair_name`: Name of the EC2 key pair for SSH access.
-  - Default: `minecraft-server-01-key-pair`
-- `ssh_key_pair_path`: Path to the SSH private key for accessing the EC2 instance.
-  - Default: `~/.ssh/personal-keys`
-- `subnet_id`: Subnet ID for the EC2 instance.
-  - Default: `subnet-bcf830d7` (us-east-2a subnet)
-- `vpc_id`: VPC ID where the EC2 instance will be deployed.
-  - Default: `vpc-4bd37320` (us-east-2 main VPC)
-- `whitelist`: List of Minecraft usernames to whitelist on the server.
-  - Default: `[]`
-  - Format: Each entry is an object: `{ uuid = string, name = string }`
+Put players who should access every current and future server in
+`shared_whitelist`. To permit someone on only one server, add them to that
+server's `additional_whitelist` instead. Each entry requires the player's
+Minecraft UUID and name. Terraform delivers whitelist changes to running
+servers through SSM without replacing an instance.
 
-## Outputs
+Use `shared_ops` for operators on every server and `additional_ops` for a
+single-server operator. Minecraft settings belong in each server's optional
+`server_settings` object. Defaults are PvP off, normal survival mode, four
+players, an empty MOTD, view and simulation distance 10, flight off, and no
+spawn protection. Use `mod_settings.simplebackups` only when a profile needs
+to override its disabled-by-default in-game backup behavior.
 
-- `discord_bot_lambda_function_url`: URL of the Discord bot Lambda function.
-- `minecraft_connection`: Minecraft server connection string.
-- `public_ip`: Public IP address of the Minecraft server.
-- `rcon_password`: RCON password for remote server management.
+Register guild commands after applying. This replaces the old `/mc` command
+with `/start`, `/stop`, and `/status`:
+
+```sh
+./scripts/register-discord-commands.sh APPLICATION_ID BOT_TOKEN GUILD_ID
+```
+
+On Windows PowerShell:
+
+```powershell
+.\scripts\register-discord-commands.ps1 -ApplicationId APPLICATION_ID -BotToken BOT_TOKEN -GuildId GUILD_ID
+```
+
+The script does not touch global commands. Global replacement requires its
+explicit `--replace-global` mode.
+
+## Operations
+
+Use Systems Manager Session Manager for administrative access. Public SSH and
+RCON are disabled by default; RCON passwords are neither created nor stored by
+Terraform.
+
+The data volume is the backup target. The shared DLM policy keeps one Sunday
+09:00 UTC recovery snapshot for each managed data volume. A public IP changes
+after an EC2 stop/start; use Discord `/status` for the current address. See
+[docs/instructions.md](docs/instructions.md) for migration, restore, and
+decommission procedures.

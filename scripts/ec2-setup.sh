@@ -1,168 +1,206 @@
-## LOCAL FUNCTIONS
-echo_success() { echo -e "\033[32m$1\033[0m"; }
-echo_success_bold() { echo -e "\033[1;32m$1\033[0m"; }
-echo_warning() { echo -e "\033[33m$1\033[0m"; }
-echo_warning_bold() { echo -e "\033[1;33m$1\033[0m"; }
-echo_info() { echo -e "\033[34m$1\033[0m"; }
-echo_info_bold() { echo -e "\033[1;34m$1\033[0m"; }
-echo_error() { echo -e "\033[31m$1\033[0m"; }
-silently() { "$@" >/dev/null 2>&1; }
+#!/bin/bash
+set -euo pipefail
 
-## PACKAGE INSTALLATION
-echo_info "Updating package lists and upgrading existing packages..."
-silently sudo dnf update -y
+config_file="/home/ec2-user/scripts/server-config.env"
+if [ ! -f "$config_file" ]; then
+    echo "Missing server configuration: $config_file" >&2
+    exit 1
+fi
+# shellcheck disable=SC1090
+source "$config_file"
 
-echo_info "Installing necessary packages: Java 17 (Amazon Corretto), netcat, pip, unzip..."
-silently sudo dnf install -y firewall-cmd java-17-amazon-corretto nc python3-pip unzip
+server_dir="/home/ec2-user/minecraft-server"
 
-#! This must be installed as root so that mcstatus is available to systemd services/timers
-#? Installs to /usr/local/bin/mcstatus
-echo_info "Installing mcstatus using pip...."
-silently sudo pip3 install mcstatus
+# Update only properties owned by the fleet configuration. awk avoids treating
+# MOTD characters as sed syntax and preserves every unrelated server property.
+set_server_property() {
+    local key="$1"
+    local value="$2"
+    local properties_file="$3"
+    local temporary_file
+    temporary_file=$(mktemp)
+    awk -v key="$key" -v value="$value" '
+        $0 ~ "^" key "=" { print key "=" value; found = 1; next }
+        { print }
+        END { if (!found) print key "=" value }
+    ' "$properties_file" >"$temporary_file"
+    mv "$temporary_file" "$properties_file"
+}
 
-echo_success "Package installation complete."
+set_toml_boolean() {
+    local key="$1"
+    local value="$2"
+    local toml_file="$3"
+    if grep -q "^${key} = " "$toml_file"; then
+        sed -i -E "s|^${key} = .*|${key} = ${value}|" "$toml_file"
+    fi
+}
 
-## SWAP FILE
-if [ ! -f /swapfile ]; then
-    echo_info "Creating 4GB swap file..."
-    silently sudo fallocate -l 4G /swapfile
-    silently sudo chmod 600 /swapfile
-    silently sudo mkswap /swapfile
-    silently sudo swapon /swapfile
-
-    echo_info "Adding swap entry to /etc/fstab..."
-    grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-    echo_success "Swap file created and enabled."
-else
-    echo_warning "Swap file already exists, skipping swap setup."
+# Keep profile Java changes operable on an already-installed server.
+java_package="java-${MC_JAVA_MAJOR}-amazon-corretto"
+if ! rpm -q "$java_package" >/dev/null 2>&1; then
+    sudo dnf install -y "$java_package"
 fi
 
-## MINECRAFT SERVER INSTALL AND SETUP
-if [ ! -d /home/ec2-user/minecraft-server ]; then
-    echo_info "Setting up Minecraft server directory..."
-    mkdir -p /home/ec2-user/minecraft-server
-    cd /home/ec2-user/minecraft-server
-
-    echo_info "Downloading Homestead Minecraft server..."
-    silently wget -O homestead-minecraft-server.zip "https://drive.usercontent.google.com/download?id=18gZsXewdy7sHZGuXkzvg6Y2ns5ybrBHl&export=download&authuser=0&confirm=t&uuid=64fe7a70-cf2a-45d5-97b1-c9373bf7d414&at=APcXIO0Om3jZNXP42D7GizFE8fka%3A1769732509376"
-
-    echo_info "Unzipping server files..."
-    silently unzip homestead-minecraft-server.zip -d .
-    rm homestead-minecraft-server.zip
-    rm -f wget-log
-
-    echo_info "Moving server files to correct location..."
-    silently sudo mv Homestead1.2.9.4/* .
-    silently sudo rmdir Homestead1.2.9.4
-
-    echo_info "Accepting Minecraft EULA..."
-    echo "eula=true" >eula.txt
-
-    echo_info "Changing settings in variables.txt..."
-    sed -i 's/^JAVA_ARGS=.*/JAVA_ARGS="-Xmx12G -Xms8G"/' variables.txt
-
-    echo_info "Changing settings in server.properties..."
-    sed -i 's/^enforce-whitelist=.*/enforce-whitelist=true/' server.properties
-    sed -i 's/^max-players=.*/max-players=4/' server.properties
-    sed -i 's/^pvp=.*/pvp=false/' server.properties
-    sed -i 's/^white-list=.*/white-list=true/' server.properties
-
-    echo_success "Minecraft server setup complete."
-else
-    echo_warning "Minecraft server directory already exists, skipping server setup."
+if [ ! -f "$server_dir/server.properties" ] && [ -z "$MC_SERVER_ARCHIVE_SHA256" ]; then
+    echo "Profile $MC_PROFILE_NAME has no archive SHA-256; refusing to bootstrap." >&2
+    exit 1
 fi
 
-## NAVIGATE TO HOME DIRECTORY
-# Navigate back to home directory
-cd /home/ec2-user
+if [ ! -f "$server_dir/server.properties" ]; then
+    sudo dnf update -y
+    sudo dnf install -y \
+        awscli nc python3-pip rsync unzip wget
+    sudo pip3 install mcstatus
 
-## SERVICE - MANAGE MC SERVER WITH SYSTEMD
-if [ ! -f /etc/systemd/system/minecraft.service ]; then
-    echo_info "Creating Minecraft server systemd service..."
-    mc_service_config=$(
-        cat <<EOF
+    if [ ! -f /swapfile ]; then
+        sudo fallocate -l 4G /swapfile
+        sudo chmod 600 /swapfile
+        sudo mkswap /swapfile
+        sudo swapon /swapfile
+        grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+    fi
+
+    mkdir -p "$server_dir"
+    cd "$server_dir"
+
+    if [[ "$MC_SERVER_ARCHIVE_URL" == s3://* ]]; then
+        aws s3 cp "$MC_SERVER_ARCHIVE_URL" minecraft-server.zip
+    else
+        wget --https-only -O minecraft-server.zip "$MC_SERVER_ARCHIVE_URL"
+    fi
+    echo "${MC_SERVER_ARCHIVE_SHA256}  minecraft-server.zip" | sha256sum -c -
+    unzip minecraft-server.zip -d .
+    rm minecraft-server.zip
+
+    if [ -n "$MC_ARCHIVE_DIRECTORY" ]; then
+        if [ ! -d "$MC_ARCHIVE_DIRECTORY" ]; then
+            echo "Profile $MC_PROFILE_NAME expected archive directory $MC_ARCHIVE_DIRECTORY." >&2
+            exit 1
+        fi
+        shopt -s dotglob nullglob
+        mv "$MC_ARCHIVE_DIRECTORY"/* .
+        rmdir "$MC_ARCHIVE_DIRECTORY"
+    fi
+
+    case "$MC_PROFILE_LAYOUT" in
+        legacy-start-sh)
+            for required_file in start.sh variables.txt server.properties; do
+                if [ ! -f "$required_file" ]; then
+                    echo "Profile $MC_PROFILE_NAME is missing required file: $required_file" >&2
+                    exit 1
+                fi
+            done
+            ;;
+        forge-installer)
+            for required_file in "$MC_FORGE_INSTALLER_JAR" server.properties mods config; do
+                if [ ! -e "$required_file" ]; then
+                    echo "Forge profile $MC_PROFILE_NAME is missing required file or directory: $required_file" >&2
+                    exit 1
+                fi
+            done
+            java -jar "$MC_FORGE_INSTALLER_JAR" --installServer
+            if [ ! -f run.sh ] || [ ! -f user_jvm_args.txt ]; then
+                echo "Forge installer for $MC_PROFILE_NAME did not produce run.sh and user_jvm_args.txt." >&2
+                exit 1
+            fi
+            chmod 0755 run.sh
+            ;;
+        *)
+            echo "Unsupported profile layout: $MC_PROFILE_LAYOUT" >&2
+            exit 1
+            ;;
+    esac
+
+    echo "eula=true" > eula.txt
+fi
+
+case "$MC_PROFILE_LAYOUT" in
+    legacy-start-sh)
+        if [ ! -f "$server_dir/variables.txt" ]; then
+            echo "Profile $MC_PROFILE_NAME has no variables.txt in the active server directory." >&2
+            exit 1
+        fi
+        sed -i "s/^JAVA_ARGS=.*/JAVA_ARGS=\"-Xmx${MC_JAVA_MAX_MEMORY} -Xms${MC_JAVA_MIN_MEMORY}\"/" "$server_dir/variables.txt"
+        ;;
+    forge-installer)
+        if [ ! -f "$server_dir/user_jvm_args.txt" ]; then
+            echo "Forge profile $MC_PROFILE_NAME has no user_jvm_args.txt." >&2
+            exit 1
+        fi
+        sed -i -E "s/^-Xms.*/-Xms${MC_JAVA_MIN_MEMORY}/; s/^-Xmx.*/-Xmx${MC_JAVA_MAX_MEMORY}/" "$server_dir/user_jvm_args.txt"
+        grep -q "^-Xms${MC_JAVA_MIN_MEMORY}$" "$server_dir/user_jvm_args.txt" || echo "-Xms${MC_JAVA_MIN_MEMORY}" >> "$server_dir/user_jvm_args.txt"
+        grep -q "^-Xmx${MC_JAVA_MAX_MEMORY}$" "$server_dir/user_jvm_args.txt" || echo "-Xmx${MC_JAVA_MAX_MEMORY}" >> "$server_dir/user_jvm_args.txt"
+        ;;
+    *)
+        echo "Unsupported profile layout: $MC_PROFILE_LAYOUT" >&2
+        exit 1
+        ;;
+esac
+
+set_server_property "pvp" "$MC_PVP" "$server_dir/server.properties"
+set_server_property "difficulty" "$MC_DIFFICULTY" "$server_dir/server.properties"
+set_server_property "gamemode" "$MC_GAME_MODE" "$server_dir/server.properties"
+set_server_property "max-players" "$MC_MAX_PLAYERS" "$server_dir/server.properties"
+set_server_property "motd" "$MC_MOTD" "$server_dir/server.properties"
+set_server_property "view-distance" "$MC_VIEW_DISTANCE" "$server_dir/server.properties"
+set_server_property "simulation-distance" "$MC_SIMULATION_DISTANCE" "$server_dir/server.properties"
+set_server_property "allow-flight" "$MC_ALLOW_FLIGHT" "$server_dir/server.properties"
+set_server_property "spawn-protection" "$MC_SPAWN_PROTECTION" "$server_dir/server.properties"
+set_server_property "server-port" "$MC_PORT" "$server_dir/server.properties"
+
+simplebackups_config="$server_dir/config/simplebackups-common.toml"
+if [ -f "$simplebackups_config" ]; then
+    set_toml_boolean "enabled" "$MC_SIMPLEBACKUPS_ENABLED" "$simplebackups_config"
+    set_toml_boolean "sendMessages" "$MC_SIMPLEBACKUPS_SEND_MESSAGES" "$simplebackups_config"
+    set_toml_boolean "mc2discord" "$MC_SIMPLEBACKUPS_DISCORD_MESSAGES" "$simplebackups_config"
+fi
+
+sudo tee /etc/systemd/system/minecraft.service >/dev/null <<EOF
 [Unit]
-Description=Minecraft Server
-After=network.target
+Description=Minecraft Server (${MC_PROFILE_NAME})
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 User=ec2-user
 WorkingDirectory=/home/ec2-user/minecraft-server
-ExecStart=/bin/bash start.sh
+ExecStart=${MC_START_COMMAND}
 Restart=on-failure
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
 EOF
-    )
 
-    echo "$mc_service_config" | silently sudo tee /etc/systemd/system/minecraft.service
-
-    echo_info "Enabling Minecraft server service to start on boot..."
-    silently sudo systemctl enable minecraft.service
-    silently sudo systemctl daemon-reload
-
-    echo_success "Minecraft server systemd service created and enabled."
-else
-    echo_warning "Minecraft server systemd service already exists, skipping service setup."
-fi
-
-## AUTO SHUTDOWN SCRIPT
-#? Creates or updates the auto-shutdown service and timer to check player count every 15 minutes and shut down if no players are online for two consecutive checks
-echo_info "Making sure auto-shutdown.sh is executable..."
-chmod +x /home/ec2-user/scripts/auto-shutdown.sh
-
-# Set up or update systemd service and timer for auto-shutdown
-echo_info "Creating and/or updating auto-shutdown systemd service and timer..."
-
-auto_shutdown_service=$(
-    cat <<EOF
+sudo tee /etc/systemd/system/auto-shutdown.service >/dev/null <<EOF
 [Unit]
 Description=Auto Shutdown Minecraft EC2 Instance
 
 [Service]
-Type=simple
+Type=oneshot
 User=ec2-user
+EnvironmentFile=-/home/ec2-user/scripts/server-config.env
 ExecStart=/home/ec2-user/scripts/auto-shutdown.sh
 EOF
-)
-echo "$auto_shutdown_service" | silently sudo tee /etc/systemd/system/auto-shutdown.service
 
-auto_shutdown_timer=$(
-    cat <<EOF
+sudo tee /etc/systemd/system/auto-shutdown.timer >/dev/null <<EOF
 [Unit]
-Description=Run auto-shutdown every 5 minutes
+Description=Check whether an idle Minecraft server should stop
 
 [Timer]
 OnBootSec=10min
-OnUnitActiveSec=5min
+OnUnitActiveSec=${MC_AUTO_SHUTDOWN_PERIOD_MIN}min
 Unit=auto-shutdown.service
 
 [Install]
 WantedBy=timers.target
 EOF
-)
-echo "$auto_shutdown_timer" | silently sudo tee /etc/systemd/system/auto-shutdown.timer
 
-echo_info "Reloading systemd and enabling auto-shutdown timer..."
-silently sudo systemctl daemon-reload
-silently sudo systemctl enable auto-shutdown.service
-silently sudo systemctl enable auto-shutdown.timer
-silently sudo systemctl restart auto-shutdown.timer
-
-echo_success "Auto-shutdown service and timer created/updated and enabled."
-echo
-
-## FINAL STATUS MESSAGE
-echo_success_bold "========================================================="
-echo_success_bold "============ Minecraft EC2 Setup Complete! =============="
-echo_success_bold "========================================================="
-echo_info_bold "Server directory: /home/ec2-user/minecraft-server"
-echo_info_bold "To check server status: sudo systemctl status minecraft"
-echo_info_bold "To start server: sudo systemctl start minecraft"
-echo_info_bold "To stop server: sudo systemctl stop minecraft"
-echo_success_bold "========================================================="
-echo_warning_bold "Auto-shutdown will power off the instance if no players"
-echo_warning_bold "are online for two consecutive checks (every 5 minutes)."
-echo_success_bold "========================================================="
-echo
+sudo systemctl daemon-reload
+sudo systemctl enable minecraft.service
+if [ "$MC_AUTO_SHUTDOWN_ENABLED" = "true" ]; then
+    sudo systemctl enable --now auto-shutdown.timer
+else
+    sudo systemctl disable --now auto-shutdown.timer || true
+fi

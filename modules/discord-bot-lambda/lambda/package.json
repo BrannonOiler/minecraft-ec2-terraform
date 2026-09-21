@@ -4,10 +4,14 @@
   "description": "A Lambda function to handle Discord bot commands for Minecraft server management",
   "license": "UNLICENSED",
   "scripts": {
-    "build": "yarn && tsup"
+    "build": "tsup",
+    "test": "tsx --test *.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-ec2": "3.990.0",
+    "@aws-sdk/client-dynamodb": "3.1136.0",
+    "@aws-sdk/client-ec2": "3.1136.0",
+    "@aws-sdk/client-ssm": "3.1136.0",
     "discord-interactions": "4.4.0"
   },
   "devDependencies": {
@@ -16,6 +20,7 @@
     "@types/node": "25.2.3",
     "nodemon": "3.1.11",
     "tsup": "8.5.1",
+    "tsx": "4.23.13",
     "typescript": "5.9.3"
   }
 }

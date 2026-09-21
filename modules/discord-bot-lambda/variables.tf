@@ -1,15 +1,13 @@
-variable "aws_region" {
-  description = "The AWS region where the EC2 instance and Lambda function are located."
-  type        = string
-  default     = "us-east-2"
-}
+variable "fleet_name" { type = string }
+variable "aws_region" { type = string }
+variable "discord_public_key" { type = string }
+variable "project_tag" { type = string }
+variable "resource_name_prefix" { type = string }
+variable "allowed_guild_id" {
+  type = string
 
-variable "discord_public_key" {
-  description = "The public key from Discord for verifying incoming interactions."
-  type        = string
-}
-
-variable "instance_id" {
-  description = "The ID of the EC2 instance whose root EBS volume will be backed up."
-  type        = string
+  validation {
+    condition     = can(regex("^[0-9]{17,20}$", var.allowed_guild_id))
+    error_message = "allowed_guild_id must be a Discord guild snowflake (17-20 digits)."
+  }
 }
