@@ -345,15 +345,9 @@ const handleCommand = async (data: {
       return response(`⚠️ **${server.name}** is ${server.state}; wait before starting it.`);
     }
     await ec2Client.send(new StartInstancesCommand({ InstanceIds: [server.instanceId] }));
-    // A stopped instance can receive a different public IP after it starts.
-    // Refresh EC2 metadata so the start response gives the player the address
-    // to use instead of relying on the stale instance list from above.
-    const refreshedServer = (await listServers()).find(
-      (candidate) => candidate.instanceId === server.instanceId,
-    );
-    const address = refreshedServer?.publicIp
-      ? `${refreshedServer.publicIp}:${refreshedServer.port}`
-      : "address pending — run /status again shortly";
+    const address = server.publicIp
+      ? `${server.publicIp}:${server.port}`
+      : "static IP unavailable";
     return response(`✅ **${server.name}** is starting. Connect at **${address}**.`);
   }
 
