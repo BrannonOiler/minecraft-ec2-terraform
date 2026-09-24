@@ -56,7 +56,7 @@ resource "aws_ec2_tag" "snapshot_tag" {
   value       = "minecraft"
 }
 
-#? DLM Lifecycle Policy for one weekly, short-term recovery point.
+#? DLM Lifecycle Policy for one daily and one weekly, short-term recovery point.
 resource "aws_dlm_lifecycle_policy" "snapshots" {
   description        = "EBS snapshot policy for Minecraft fleet volumes"
   execution_role_arn = aws_iam_role.dlm_lifecycle_role.arn
@@ -69,7 +69,20 @@ resource "aws_dlm_lifecycle_policy" "snapshots" {
       Project = var.project_tag
     }
 
-    # Sunday 09:00 UTC; a single point-in-time recovery snapshot per data volume.
+    # Daily at 09:00 UTC; retain one point-in-time recovery snapshot per data volume.
+    schedule {
+      name = "daily one snapshot retention"
+      create_rule {
+        cron_expression = "cron(0 9 * * ? *)"
+      }
+      retain_rule {
+        count = 1
+      }
+      tags_to_add = { SnapshotCreator = "DLM" }
+      copy_tags   = true
+    }
+
+    # Sunday 09:00 UTC; retain one weekly recovery snapshot per data volume.
     schedule {
       name = "weekly one snapshot retention"
       create_rule {
