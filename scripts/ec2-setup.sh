@@ -1,15 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 
-config_file="/home/ec2-user/scripts/server-config.env"
+readonly config_file="/home/ec2-user/scripts/server-config.env"
+readonly server_dir="/home/ec2-user/minecraft-server"
+
 if [ ! -f "$config_file" ]; then
     echo "Missing server configuration: $config_file" >&2
     exit 1
 fi
 # shellcheck disable=SC1090
 source "$config_file"
-
-server_dir="/home/ec2-user/minecraft-server"
 
 # Update only properties owned by the fleet configuration. awk avoids treating
 # MOTD characters as sed syntax and preserves every unrelated server property.
@@ -36,18 +36,23 @@ set_toml_boolean() {
     fi
 }
 
-# Keep profile Java changes operable on an already-installed server.
-java_package="java-${MC_JAVA_MAJOR}-amazon-corretto"
-if ! rpm -q "$java_package" >/dev/null 2>&1; then
-    sudo dnf install -y "$java_package"
-fi
+ensure_java() {
+    local java_package="java-${MC_JAVA_MAJOR}-amazon-corretto"
+    if ! rpm -q "$java_package" >/dev/null 2>&1; then
+        sudo dnf install -y "$java_package"
+    fi
+}
 
-if [ ! -f "$server_dir/server.properties" ] && [ -z "$MC_SERVER_ARCHIVE_SHA256" ]; then
-    echo "Profile $MC_PROFILE_NAME has no archive SHA-256; refusing to bootstrap." >&2
-    exit 1
-fi
+install_profile() {
+    if [ -f "$server_dir/server.properties" ]; then
+        return
+    fi
 
-if [ ! -f "$server_dir/server.properties" ]; then
+    if [ -z "$MC_SERVER_ARCHIVE_SHA256" ]; then
+        echo "Profile $MC_PROFILE_NAME has no archive SHA-256; refusing to bootstrap." >&2
+        exit 1
+    fi
+
     sudo dnf update -y
     sudo dnf install -y \
         awscli nc python3-pip rsync unzip wget
@@ -112,51 +117,58 @@ if [ ! -f "$server_dir/server.properties" ]; then
             ;;
     esac
 
-    echo "eula=true" > eula.txt
-fi
+    echo "eula=true" >eula.txt
+}
 
-case "$MC_PROFILE_LAYOUT" in
-    legacy-start-sh)
-        if [ ! -f "$server_dir/variables.txt" ]; then
-            echo "Profile $MC_PROFILE_NAME has no variables.txt in the active server directory." >&2
+configure_java_memory() {
+    case "$MC_PROFILE_LAYOUT" in
+        legacy-start-sh)
+            if [ ! -f "$server_dir/variables.txt" ]; then
+                echo "Profile $MC_PROFILE_NAME has no variables.txt in the active server directory." >&2
+                exit 1
+            fi
+            sed -i "s/^JAVA_ARGS=.*/JAVA_ARGS=\"-Xmx${MC_JAVA_MAX_MEMORY} -Xms${MC_JAVA_MIN_MEMORY}\"/" "$server_dir/variables.txt"
+            ;;
+        forge-installer)
+            if [ ! -f "$server_dir/user_jvm_args.txt" ]; then
+                echo "Forge profile $MC_PROFILE_NAME has no user_jvm_args.txt." >&2
+                exit 1
+            fi
+            sed -i -E "s/^-Xms.*/-Xms${MC_JAVA_MIN_MEMORY}/; s/^-Xmx.*/-Xmx${MC_JAVA_MAX_MEMORY}/" "$server_dir/user_jvm_args.txt"
+            grep -q "^-Xms${MC_JAVA_MIN_MEMORY}$" "$server_dir/user_jvm_args.txt" || echo "-Xms${MC_JAVA_MIN_MEMORY}" >>"$server_dir/user_jvm_args.txt"
+            grep -q "^-Xmx${MC_JAVA_MAX_MEMORY}$" "$server_dir/user_jvm_args.txt" || echo "-Xmx${MC_JAVA_MAX_MEMORY}" >>"$server_dir/user_jvm_args.txt"
+            ;;
+        *)
+            echo "Unsupported profile layout: $MC_PROFILE_LAYOUT" >&2
             exit 1
-        fi
-        sed -i "s/^JAVA_ARGS=.*/JAVA_ARGS=\"-Xmx${MC_JAVA_MAX_MEMORY} -Xms${MC_JAVA_MIN_MEMORY}\"/" "$server_dir/variables.txt"
-        ;;
-    forge-installer)
-        if [ ! -f "$server_dir/user_jvm_args.txt" ]; then
-            echo "Forge profile $MC_PROFILE_NAME has no user_jvm_args.txt." >&2
-            exit 1
-        fi
-        sed -i -E "s/^-Xms.*/-Xms${MC_JAVA_MIN_MEMORY}/; s/^-Xmx.*/-Xmx${MC_JAVA_MAX_MEMORY}/" "$server_dir/user_jvm_args.txt"
-        grep -q "^-Xms${MC_JAVA_MIN_MEMORY}$" "$server_dir/user_jvm_args.txt" || echo "-Xms${MC_JAVA_MIN_MEMORY}" >> "$server_dir/user_jvm_args.txt"
-        grep -q "^-Xmx${MC_JAVA_MAX_MEMORY}$" "$server_dir/user_jvm_args.txt" || echo "-Xmx${MC_JAVA_MAX_MEMORY}" >> "$server_dir/user_jvm_args.txt"
-        ;;
-    *)
-        echo "Unsupported profile layout: $MC_PROFILE_LAYOUT" >&2
-        exit 1
-        ;;
-esac
+            ;;
+    esac
+}
 
-set_server_property "pvp" "$MC_PVP" "$server_dir/server.properties"
-set_server_property "difficulty" "$MC_DIFFICULTY" "$server_dir/server.properties"
-set_server_property "gamemode" "$MC_GAME_MODE" "$server_dir/server.properties"
-set_server_property "max-players" "$MC_MAX_PLAYERS" "$server_dir/server.properties"
-set_server_property "motd" "$MC_MOTD" "$server_dir/server.properties"
-set_server_property "view-distance" "$MC_VIEW_DISTANCE" "$server_dir/server.properties"
-set_server_property "simulation-distance" "$MC_SIMULATION_DISTANCE" "$server_dir/server.properties"
-set_server_property "allow-flight" "$MC_ALLOW_FLIGHT" "$server_dir/server.properties"
-set_server_property "spawn-protection" "$MC_SPAWN_PROTECTION" "$server_dir/server.properties"
-set_server_property "server-port" "$MC_PORT" "$server_dir/server.properties"
+configure_server_properties() {
+    set_server_property "pvp" "$MC_PVP" "$server_dir/server.properties"
+    set_server_property "difficulty" "$MC_DIFFICULTY" "$server_dir/server.properties"
+    set_server_property "gamemode" "$MC_GAME_MODE" "$server_dir/server.properties"
+    set_server_property "max-players" "$MC_MAX_PLAYERS" "$server_dir/server.properties"
+    set_server_property "motd" "$MC_MOTD" "$server_dir/server.properties"
+    set_server_property "view-distance" "$MC_VIEW_DISTANCE" "$server_dir/server.properties"
+    set_server_property "simulation-distance" "$MC_SIMULATION_DISTANCE" "$server_dir/server.properties"
+    set_server_property "allow-flight" "$MC_ALLOW_FLIGHT" "$server_dir/server.properties"
+    set_server_property "spawn-protection" "$MC_SPAWN_PROTECTION" "$server_dir/server.properties"
+    set_server_property "server-port" "$MC_PORT" "$server_dir/server.properties"
+}
 
-simplebackups_config="$server_dir/config/simplebackups-common.toml"
-if [ -f "$simplebackups_config" ]; then
-    set_toml_boolean "enabled" "$MC_SIMPLEBACKUPS_ENABLED" "$simplebackups_config"
-    set_toml_boolean "sendMessages" "$MC_SIMPLEBACKUPS_SEND_MESSAGES" "$simplebackups_config"
-    set_toml_boolean "mc2discord" "$MC_SIMPLEBACKUPS_DISCORD_MESSAGES" "$simplebackups_config"
-fi
+configure_simplebackups() {
+    local simplebackups_config="$server_dir/config/simplebackups-common.toml"
+    if [ -f "$simplebackups_config" ]; then
+        set_toml_boolean "enabled" "$MC_SIMPLEBACKUPS_ENABLED" "$simplebackups_config"
+        set_toml_boolean "sendMessages" "$MC_SIMPLEBACKUPS_SEND_MESSAGES" "$simplebackups_config"
+        set_toml_boolean "mc2discord" "$MC_SIMPLEBACKUPS_DISCORD_MESSAGES" "$simplebackups_config"
+    fi
+}
 
-sudo tee /etc/systemd/system/minecraft.service >/dev/null <<EOF
+write_systemd_units() {
+    sudo tee /etc/systemd/system/minecraft.service >/dev/null <<EOF
 [Unit]
 Description=Minecraft Server (${MC_PROFILE_NAME})
 After=network-online.target
@@ -173,7 +185,7 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-sudo tee /etc/systemd/system/auto-shutdown.service >/dev/null <<EOF
+    sudo tee /etc/systemd/system/auto-shutdown.service >/dev/null <<EOF
 [Unit]
 Description=Auto Shutdown Minecraft EC2 Instance
 
@@ -184,7 +196,7 @@ EnvironmentFile=-/home/ec2-user/scripts/server-config.env
 ExecStart=/home/ec2-user/scripts/auto-shutdown.sh
 EOF
 
-sudo tee /etc/systemd/system/auto-shutdown.timer >/dev/null <<EOF
+    sudo tee /etc/systemd/system/auto-shutdown.timer >/dev/null <<EOF
 [Unit]
 Description=Check whether an idle Minecraft server should stop
 
@@ -196,11 +208,26 @@ Unit=auto-shutdown.service
 [Install]
 WantedBy=timers.target
 EOF
+}
 
-sudo systemctl daemon-reload
-sudo systemctl enable minecraft.service
-if [ "$MC_AUTO_SHUTDOWN_ENABLED" = "true" ]; then
-    sudo systemctl enable --now auto-shutdown.timer
-else
-    sudo systemctl disable --now auto-shutdown.timer || true
-fi
+configure_services() {
+    sudo systemctl daemon-reload
+    sudo systemctl enable minecraft.service
+    if [ "$MC_AUTO_SHUTDOWN_ENABLED" = "true" ]; then
+        sudo systemctl enable --now auto-shutdown.timer
+    else
+        sudo systemctl disable --now auto-shutdown.timer || true
+    fi
+}
+
+main() {
+    ensure_java
+    install_profile
+    configure_java_memory
+    configure_server_properties
+    configure_simplebackups
+    write_systemd_units
+    configure_services
+}
+
+main "$@"

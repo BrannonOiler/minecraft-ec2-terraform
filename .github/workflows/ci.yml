@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.8
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false -input=false -lockfile=readonly
+      - run: terraform validate
+
+  lambda:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: modules/discord-bot-lambda/lambda
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: modules/discord-bot-lambda/lambda/yarn.lock
+      - run: yarn install --frozen-lockfile
+      - run: yarn typecheck
+      - run: yarn test
+      - run: yarn build
+      - run: node -e "if (typeof require('./dist/index.js').handler !== 'function') process.exit(1)"
+
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck scripts/*.sh
+      - run: bash -n scripts/*.sh
+      - name: Validate Discord command payload
+        run: >-
+          jq -e 'length == 3 and
+          ([.[].name] == ["start", "stop", "status"]) and
+          (.[0].options[0].autocomplete == true) and
+          (.[1].options[0].autocomplete == true)'
+          scripts/discord-commands.json
+      - name: Parse PowerShell registration script
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "scripts/register-discord-commands.ps1"),
+            [ref] $tokens,
+            [ref] $errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List
+            exit 1
+          }

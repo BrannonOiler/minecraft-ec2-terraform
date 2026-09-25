@@ -50,6 +50,10 @@ object and an observed lock-free window.
 
 ## Restore and decommission
 
+The shared DLM policy creates snapshots at 09:00 UTC. It retains one daily
+recovery point and one additional Sunday recovery point for every managed data
+volume.
+
 To restore a world, create an EBS volume from a server's tagged snapshot,
 attach it in the same availability zone, mount it through SSM, and verify the
 world before replacing the active data volume.

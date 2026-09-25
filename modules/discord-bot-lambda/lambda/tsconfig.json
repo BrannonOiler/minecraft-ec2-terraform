@@ -5,8 +5,10 @@
     "moduleResolution": "NodeNext",
     "strict": true,
     "esModuleInterop": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "skipLibCheck": true,
     "types": ["node", "aws-lambda"]
   },
-  "include": ["index.ts", "index.test.ts", "tsup.config.ts"]
+  "include": ["*.ts"]
 }

@@ -1,9 +1,10 @@
 # Minecraft fleet on EC2
 
 This project manages multiple Minecraft servers as a Terraform fleet. Each
-server has an EC2 instance, a launch-time public IP, encrypted persistent world volume,
-profile-verified installation, SSM-based configuration, scheduled snapshots,
-and Discord control through one shared bot.
+server has an EC2 instance, a current public IP or an explicitly retained
+Elastic IP, an encrypted persistent world volume, profile-verified installation,
+SSM-based configuration, scheduled snapshots, and Discord control through one
+shared bot.
 
 ## Server model
 
@@ -74,8 +75,12 @@ On Windows PowerShell:
 .\scripts\register-discord-commands.ps1 -ApplicationId APPLICATION_ID -BotToken BOT_TOKEN -GuildId GUILD_ID
 ```
 
-The script does not touch global commands. Global replacement requires its
-explicit `--replace-global` mode.
+Normal guild registration does not touch global commands. The Bash script can
+replace every global command with `--replace-global` or remove only the legacy
+global `/mc` command with `--remove-legacy-global`. The PowerShell script's
+optional `-RemoveLegacyGlobal` switch removes global `/mc`, `/start`, `/stop`,
+and `/status` commands after registering the guild commands. Both scripts load
+the same command definitions from `scripts/discord-commands.json`.
 
 ## Operations
 
@@ -83,8 +88,9 @@ Use Systems Manager Session Manager for administrative access. Public SSH and
 RCON are disabled by default; RCON passwords are neither created nor stored by
 Terraform.
 
-The data volume is the backup target. The shared DLM policy keeps one Sunday
-09:00 UTC recovery snapshot for each managed data volume. A public IP changes
-after an EC2 stop/start; use Discord `/status` for the current address. See
-[docs/instructions.md](docs/instructions.md) for migration, restore, and
+The data volume is the backup target. The shared DLM policy keeps one daily
+09:00 UTC snapshot and one Sunday 09:00 UTC snapshot for each managed data
+volume. Unless a server explicitly retains an Elastic IP, its public IP can
+change after an EC2 stop/start; use Discord `/status` for the current address.
+See [docs/instructions.md](docs/instructions.md) for migration, restore, and
 decommission procedures.

@@ -1,7 +1,4 @@
-#* EBS Backup Lifecycle Policy Module
-#* - provisions IAM resources and a DLM lifecycle policy to snapshot an EBS volume on a schedule.
-
-#? IAM Assume Role Policy for DLM
+# DLM assumes this role to create and manage the fleet's EBS snapshots.
 data "aws_iam_policy_document" "assume_role" {
   statement {
     effect = "Allow"
@@ -13,13 +10,11 @@ data "aws_iam_policy_document" "assume_role" {
   }
 }
 
-#? IAM Role for DLM
 resource "aws_iam_role" "dlm_lifecycle_role" {
   name               = "dlm-lifecycle-role"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
 }
 
-#? IAM Policy for DLM
 data "aws_iam_policy_document" "dlm_lifecycle" {
   statement {
     effect = "Allow"
@@ -40,14 +35,13 @@ data "aws_iam_policy_document" "dlm_lifecycle" {
   }
 }
 
-#? Attach IAM Policy to Role
 resource "aws_iam_role_policy" "dlm_lifecycle" {
   name   = "dlm-lifecycle-policy"
   role   = aws_iam_role.dlm_lifecycle_role.id
   policy = data.aws_iam_policy_document.dlm_lifecycle.json
 }
 
-#? Tag the EBS volume for snapshot targeting
+# DLM discovers protected volumes through these shared tags.
 resource "aws_ec2_tag" "snapshot_tag" {
   for_each = var.volume_ids
 
@@ -56,7 +50,7 @@ resource "aws_ec2_tag" "snapshot_tag" {
   value       = "minecraft"
 }
 
-#? DLM Lifecycle Policy for one daily and one weekly, short-term recovery point.
+# Keep one daily and one weekly short-term recovery point for every tagged volume.
 resource "aws_dlm_lifecycle_policy" "snapshots" {
   description        = "EBS snapshot policy for Minecraft fleet volumes"
   execution_role_arn = aws_iam_role.dlm_lifecycle_role.arn

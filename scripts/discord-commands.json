@@ -1,0 +1,32 @@
+[
+  {
+    "name": "start",
+    "description": "Start a Minecraft server",
+    "options": [
+      {
+        "type": 3,
+        "name": "server",
+        "description": "Choose a server",
+        "required": true,
+        "autocomplete": true
+      }
+    ]
+  },
+  {
+    "name": "stop",
+    "description": "Gracefully stop a Minecraft server",
+    "options": [
+      {
+        "type": 3,
+        "name": "server",
+        "description": "Choose a server",
+        "required": true,
+        "autocomplete": true
+      }
+    ]
+  },
+  {
+    "name": "status",
+    "description": "Show Minecraft fleet status"
+  }
+]

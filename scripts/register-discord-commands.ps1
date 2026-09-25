@@ -5,22 +5,8 @@ param(
     [switch] $RemoveLegacyGlobal
 )
 
-$commands = @(
-    @{
-        name = "start"
-        description = "Start a Minecraft server"
-        options = @(@{ type = 3; name = "server"; description = "Choose a server"; required = $true; autocomplete = $true })
-    },
-    @{
-        name = "stop"
-        description = "Gracefully stop a Minecraft server"
-        options = @(@{ type = 3; name = "server"; description = "Choose a server"; required = $true; autocomplete = $true })
-    },
-    @{
-        name = "status"
-        description = "Show Minecraft fleet status"
-    }
-)
+$commandPayloadPath = Join-Path $PSScriptRoot "discord-commands.json"
+$commandPayload = Get-Content -LiteralPath $commandPayloadPath -Raw
 
 $uri = "https://discord.com/api/v10/applications/$ApplicationId/guilds/$GuildId/commands"
 $headers = @{
@@ -30,7 +16,7 @@ $headers = @{
 
 # Discord's edge may reject PowerShell's default request identity with error 40333.
 $userAgent = "minecraft-fleet-command-registration/1.0"
-Invoke-RestMethod -Method Put -Uri $uri -Headers $headers -UserAgent $userAgent -ContentType "application/json" -Body ($commands | ConvertTo-Json -Depth 5)
+Invoke-RestMethod -Method Put -Uri $uri -Headers $headers -UserAgent $userAgent -ContentType "application/json" -Body $commandPayload
 Write-Host "Registered /start, /stop, and /status fleet commands successfully."
 
 if ($RemoveLegacyGlobal) {

@@ -16,14 +16,18 @@ flock -n 9 || exit 0
 source "$config_file"
 mkdir -p /var/lib/minecraft-fleet
 
-desired_hash=$(cat \
-    "$config_file" \
-    "$config_dir/whitelist.json" \
-    "$config_dir/ops.json" \
-    "$config_dir/ec2-setup.sh" \
-    "$config_dir/auto-shutdown.sh" | \
-    { cat; printf '\n%s\n%s\n' "$data_volume_id" "$migrate_existing_data"; } | \
-    sha256sum | awk '{print $1}')
+calculate_desired_hash() {
+    cat \
+        "$config_file" \
+        "$config_dir/whitelist.json" \
+        "$config_dir/ops.json" \
+        "$config_dir/ec2-setup.sh" \
+        "$config_dir/auto-shutdown.sh" | \
+        { cat; printf '\n%s\n%s\n' "$data_volume_id" "$migrate_existing_data"; } | \
+        sha256sum | awk '{print $1}'
+}
+
+desired_hash=$(calculate_desired_hash)
 if [ -f /var/lib/minecraft-fleet/config.hash ] && \
    [ "$(cat /var/lib/minecraft-fleet/config.hash)" = "$desired_hash" ]; then
     exit 0
@@ -79,44 +83,54 @@ is_existing_root_server() {
     [ -d "$server_link" ] && [ ! -L "$server_link" ] && [ -f "$server_link/server.properties" ]
 }
 
-if is_existing_root_server && [ "$migrate_existing_data" != "true" ]; then
-    active_dir="$server_link"
-else
-    mount_data_volume
+prepare_active_directory() {
+    if is_existing_root_server && [ "$migrate_existing_data" != "true" ]; then
+        active_dir="$server_link"
+    else
+        mount_data_volume
 
-    if is_existing_root_server && [ ! -f /var/lib/minecraft-fleet/data-migrated ]; then
-        dnf install -y rsync
-        systemctl stop minecraft.service || true
-        rsync -aHAX --numeric-ids "$server_link/" "$data_dir/"
-        test -z "$(rsync -aHAXn --delete --numeric-ids "$server_link/" "$data_dir/")"
-        mv "$server_link" "${server_link}.root-backup-$(date +%Y%m%d%H%M%S)"
-        ln -s "$data_dir" "$server_link"
-        touch /var/lib/minecraft-fleet/data-migrated
-    elif [ ! -e "$server_link" ]; then
-        ln -s "$data_dir" "$server_link"
+        if is_existing_root_server && [ ! -f /var/lib/minecraft-fleet/data-migrated ]; then
+            dnf install -y rsync
+            systemctl stop minecraft.service || true
+            rsync -aHAX --numeric-ids "$server_link/" "$data_dir/"
+            test -z "$(rsync -aHAXn --delete --numeric-ids "$server_link/" "$data_dir/")"
+            mv "$server_link" "${server_link}.root-backup-$(date +%Y%m%d%H%M%S)"
+            ln -s "$data_dir" "$server_link"
+            touch /var/lib/minecraft-fleet/data-migrated
+        elif [ ! -e "$server_link" ]; then
+            ln -s "$data_dir" "$server_link"
+        fi
+        active_dir="$data_dir"
     fi
-    active_dir="$data_dir"
-fi
+}
 
-install -d -o ec2-user -g ec2-user /home/ec2-user/scripts
-install -m 0700 -o ec2-user -g ec2-user "$config_dir/ec2-setup.sh" /home/ec2-user/scripts/ec2-setup.sh
-install -m 0700 -o ec2-user -g ec2-user "$config_dir/auto-shutdown.sh" /home/ec2-user/scripts/auto-shutdown.sh
-install -m 0600 -o ec2-user -g ec2-user "$config_file" /home/ec2-user/scripts/server-config.env
+install_fleet_scripts() {
+    install -d -o ec2-user -g ec2-user /home/ec2-user/scripts
+    install -m 0700 -o ec2-user -g ec2-user "$config_dir/ec2-setup.sh" /home/ec2-user/scripts/ec2-setup.sh
+    install -m 0700 -o ec2-user -g ec2-user "$config_dir/auto-shutdown.sh" /home/ec2-user/scripts/auto-shutdown.sh
+    install -m 0600 -o ec2-user -g ec2-user "$config_file" /home/ec2-user/scripts/server-config.env
+}
 
-# The setup script is deliberately idempotent: on an installed server it
-# refreshes the systemd units and timer settings; on a new server it also
-# verifies and installs the selected profile.
-sudo -u ec2-user -H /home/ec2-user/scripts/ec2-setup.sh
+apply_server_configuration() {
+    # The setup script is deliberately idempotent: on an installed server it
+    # refreshes the systemd units and timer settings; on a new server it also
+    # verifies and installs the selected profile.
+    sudo -u ec2-user -H /home/ec2-user/scripts/ec2-setup.sh
 
-install -m 0644 -o ec2-user -g ec2-user "$config_dir/whitelist.json" "$active_dir/whitelist.json"
-install -m 0644 -o ec2-user -g ec2-user "$config_dir/ops.json" "$active_dir/ops.json"
+    install -m 0644 -o ec2-user -g ec2-user "$config_dir/whitelist.json" "$active_dir/whitelist.json"
+    install -m 0644 -o ec2-user -g ec2-user "$config_dir/ops.json" "$active_dir/ops.json"
 
-sed -i 's/^enable-rcon=.*/enable-rcon=false/' "$active_dir/server.properties"
-sed -i '/^rcon.password=/d' "$active_dir/server.properties"
-sed -i 's/^enforce-whitelist=.*/enforce-whitelist=true/' "$active_dir/server.properties"
-sed -i 's/^white-list=.*/white-list=true/' "$active_dir/server.properties"
+    sed -i 's/^enable-rcon=.*/enable-rcon=false/' "$active_dir/server.properties"
+    sed -i '/^rcon.password=/d' "$active_dir/server.properties"
+    sed -i 's/^enforce-whitelist=.*/enforce-whitelist=true/' "$active_dir/server.properties"
+    sed -i 's/^white-list=.*/white-list=true/' "$active_dir/server.properties"
 
-systemctl daemon-reload
-systemctl enable minecraft.service auto-shutdown.timer
-systemctl restart minecraft.service
+    systemctl daemon-reload
+    systemctl enable minecraft.service auto-shutdown.timer
+    systemctl restart minecraft.service
+}
+
+prepare_active_directory
+install_fleet_scripts
+apply_server_configuration
 printf '%s\n' "$desired_hash" >/var/lib/minecraft-fleet/config.hash

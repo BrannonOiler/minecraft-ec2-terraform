@@ -21,9 +21,8 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 
-# Ignore .terraformrc and .terraform.lock.hcl
+# Ignore per-user Terraform CLI configuration
 .terraformrc
-.terraform.lock.hcl
 
 # Ignore sensitive files
 secret.tfvars

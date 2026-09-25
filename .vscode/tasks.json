@@ -2,14 +2,21 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Terraform Apply",
+      "label": "Terraform Validate",
       "type": "shell",
-      "command": "terraform apply",
-      "args": [],
+      "command": "terraform",
+      "args": ["validate"],
       "group": {
         "kind": "build",
         "isDefault": true
       },
+      "problemMatcher": []
+    },
+    {
+      "label": "Terraform Apply",
+      "type": "shell",
+      "command": "terraform",
+      "args": ["apply"],
       "problemMatcher": []
     }
   ]

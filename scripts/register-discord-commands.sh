@@ -52,35 +52,21 @@ else
     commands_url="https://discord.com/api/v10/applications/${application_id}/guilds/${target}/commands"
 fi
 
-command_payload='[
-  {
-    "name": "start",
-    "description": "Start a Minecraft server",
-    "options": [{ "type": 3, "name": "server", "description": "Choose a server", "required": true, "autocomplete": true }]
-  },
-  {
-    "name": "stop",
-    "description": "Gracefully stop a Minecraft server",
-    "options": [{ "type": 3, "name": "server", "description": "Choose a server", "required": true, "autocomplete": true }]
-  },
-  {
-    "name": "status",
-    "description": "Show Minecraft fleet status"
-  }
-]'
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+command_payload=$(<"${script_dir}/discord-commands.json")
 
 response=$(curl --silent --show-error --write-out "\n%{http_code}" \
     --request PUT "$commands_url" \
     --header "Authorization: Bot ${token}" \
     --header "Content-Type: application/json" \
     --data "$command_payload")
-http_code=$(echo "$response" | tail -n1)
-body=$(echo "$response" | sed '$d')
+http_code=$(printf '%s\n' "$response" | tail -n1)
+body=$(printf '%s\n' "$response" | sed '$d')
 
 if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
     echo "Registered /start, /stop, and /status fleet commands successfully."
 else
     echo "Discord command registration failed (HTTP $http_code)."
-    echo "$body"
+    printf '%s\n' "$body"
     exit 1
 fi
